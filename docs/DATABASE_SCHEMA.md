@@ -9,6 +9,9 @@ Source of truth: `prisma/schema.prisma` + `prisma/migrations/*` (the `constraint
 | Guests & stays | `guests`, `reservations`, `reservation_status_history` |
 | Operations | `housekeeping_tasks`, `maintenance_requests` (`blocksRoom`) |
 | Compliance | `audit_logs` (append-only) |
+| Billing | `folios`, `folio_entries` (append-only ledger), `payments`, `refunds`, `cash_shifts` |
+| Tax & invoicing | `tax_rules`, `invoice_sequences`, `invoices`, `invoice_lines` |
+| Accounting | `accounts`, `journal_entries`, `journal_lines` |
 
 ## Conventions
 - UUID primary keys. Money is integer minor units (`baseRateMinor`, paise).
@@ -25,5 +28,15 @@ Source of truth: `prisma/schema.prisma` + `prisma/migrations/*` (the `constraint
 ## Roles
 Migrations run as an admin role. The app connects as `pms_app` (no superuser, no BYPASSRLS) with table-level DML grants. New tables need `GRANT` (dev DB sets default privileges; test setup re-grants).
 
+## Billing guarantees (tested)
+- `folio_entries`, `payments`, `refunds`, `invoices`, `invoice_lines`, `journal_*` reject UPDATE/DELETE/TRUNCATE.
+- Approved/retired `tax_rules` cannot change economic terms (trigger); only drafts can be deleted.
+- A journal entry must balance at commit (deferred constraint trigger); each journal line is debit XOR credit.
+- `invoice_lines.folioEntryId` is unique, so a charge can be on one document only; `folio_entries.reversesEntryId` is unique, so a line can be credited once.
+- `payments` and `folio_entries` carry unique idempotency keys per tenant.
+- `folio_entries.balanceDeltaMinor` is the signed effect on the amount owed: balance = SUM over the folio.
+- Money columns are 32-bit integers (paise); the app caps single amounts well below that.
+- Same RLS tenant policy on all new tables.
+
 ## Not yet modelled
-Folios, invoices, payments, tax rules, accounting, channels, subscriptions, backups, documents, rate plans.
+Debit notes, advance receipts, folio transfers, expenses/suppliers, channels, subscriptions, backups, documents, rate plans.
