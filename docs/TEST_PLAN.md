@@ -15,7 +15,6 @@ Run: `npm run db:start` (local Postgres, keep running) then
 | Members | Integration | invite/accept once, no privilege escalation, deactivation revokes session, last-owner/self protection, extra permissions |
 | Stays | Integration | extend (clash rejected), room move, calendar, maintenance blocks sale, dirty-room check-in refused |
 | Full workflow | E2E | register, MFA, rooms, guest, booking, overbook refused, check-in/out, dirty room, audit entries, MFA re-login; mobile overflow check on /login |
-
 | GST engine | Unit | CGST=SGST always, components sum to tax, inclusive keeps gross, negatives mirror positives, effective dates, tariff bands, overlap/none errors, GSTIN checksum, financial year |
 | Billing | Integration | maker-checker, immutable rules, ledger and invoice immutability, discounts, idempotent payments (5 concurrent -> 1), shift reconciliation + separate approver, refund limits, concurrent invoice issue (no gaps/duplicates), credit notes, tenant isolation, unregistered bill of supply |
 | Accounting | Integration | journal balances, receivable = folio balances, revenue/tax accounts tie to the ledger, DB rejects an unbalanced entry |
@@ -23,5 +22,4 @@ Run: `npm run db:start` (local Postgres, keep running) then
 | Billing UI | E2E | checkout refused with balance, post charges, UPI payment, bill of supply, checkout |
 
 ## Not covered yet
-GST-registered flow in the browser (maker-checker needs two users), credit-note UI, cashier UI, mobile layouts of billing screens, PDF output,
-Mobile layout of authenticated screens, accessibility audit, load/concurrency beyond the cases above, dependency scanning results, cross-browser. Billing/GST/reporting/channel tests belong to later phases.
+GST-registered flow in the browser (maker-checker needs two users), credit-note UI, cashier UI, mobile layouts of billing screens, PDF output, mobile layout of other authenticated screens, accessibility audit, load/concurrency beyond the cases above, dependency scanning results, cross-browser. Billing/GST/reporting/channel tests belong to later phases.
