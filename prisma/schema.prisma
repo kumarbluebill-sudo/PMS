@@ -1,0 +1,277 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------- Identity & tenancy ----------
+
+model Tenant {
+  id          String   @id @default(uuid()) @db.Uuid
+  legalName   String
+  displayName String
+  status      String   @default("ACTIVE")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  memberships Membership[]
+  properties  Property[]
+  guests      Guest[]
+  auditLogs   AuditLog[]
+
+  @@map("tenants")
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique
+  name         String
+  passwordHash String
+  active       Boolean  @default(true)
+  mfaSecretEnc String?
+  mfaEnabled   Boolean  @default(false)
+  sessionEpoch Int      @default(0) // bump to revoke all sessions
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  memberships Membership[]
+
+  @@map("users")
+}
+
+model Membership {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  userId    String   @db.Uuid
+  role      String // RoleKey
+  extraPermissions String[] @default([])
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id])
+  user       User       @relation(fields: [userId], references: [id])
+  properties UserProperty[]
+
+  @@unique([tenantId, userId])
+  @@map("tenant_memberships")
+}
+
+model Property {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @db.Uuid
+  name          String
+  address       String?
+  timezone      String   @default("Asia/Kolkata")
+  currency      String   @default("INR")
+  checkInTime   String   @default("14:00")
+  checkOutTime  String   @default("11:00")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant       Tenant         @relation(fields: [tenantId], references: [id])
+  users        UserProperty[]
+  roomTypes    RoomType[]
+  rooms        Room[]
+  reservations Reservation[]
+  tasks        HousekeepingTask[]
+  maintenance  MaintenanceRequest[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId])
+  @@map("properties")
+}
+
+model UserProperty {
+  membershipId String @db.Uuid
+  propertyId   String @db.Uuid
+
+  membership Membership @relation(fields: [membershipId], references: [id])
+  property   Property   @relation(fields: [propertyId], references: [id])
+
+  @@id([membershipId, propertyId])
+  @@map("user_property_roles")
+}
+
+// ---------- Rooms ----------
+
+model RoomType {
+  id           String @id @default(uuid()) @db.Uuid
+  tenantId     String @db.Uuid
+  propertyId   String @db.Uuid
+  name         String
+  maxAdults    Int    @default(2)
+  maxChildren  Int    @default(0)
+  baseRateMinor Int   @default(0) // integer minor units (paise)
+  createdAt    DateTime @default(now())
+
+  property Property @relation(fields: [propertyId], references: [id])
+  rooms    Room[]
+
+  @@index([tenantId, propertyId])
+  @@map("room_types")
+}
+
+model Room {
+  id             String  @id @default(uuid()) @db.Uuid
+  tenantId       String  @db.Uuid
+  propertyId     String  @db.Uuid
+  roomTypeId     String  @db.Uuid
+  number         String
+  // Operational status; separate from booking state.
+  housekeeping   String  @default("CLEAN") // CLEAN | DIRTY | CLEANING | INSPECTED
+  outOfOrder     Boolean @default(false)
+  createdAt      DateTime @default(now())
+
+  property    Property   @relation(fields: [propertyId], references: [id])
+  roomType    RoomType   @relation(fields: [roomTypeId], references: [id])
+  assignments RoomAssignment[]
+  tasks       HousekeepingTask[]
+  maintenance MaintenanceRequest[]
+
+  @@unique([propertyId, number])
+  @@index([tenantId, propertyId])
+  @@map("rooms")
+}
+
+// ---------- Guests & reservations ----------
+
+model Guest {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  name      String
+  phone     String?
+  email     String?
+  notes     String?
+  createdAt DateTime @default(now())
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  reservations Reservation[]
+
+  @@index([tenantId])
+  @@map("guests")
+}
+
+model Reservation {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @db.Uuid
+  propertyId  String   @db.Uuid
+  reference   String
+  guestId     String   @db.Uuid
+  roomTypeId  String   @db.Uuid
+  source      String   @default("DIRECT")
+  arrival     DateTime @db.Date
+  departure   DateTime @db.Date
+  adults      Int      @default(1)
+  children    Int      @default(0)
+  status      String   @default("CONFIRMED")
+  notes       String?
+  createdBy   String   @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  property    Property @relation(fields: [propertyId], references: [id])
+  guest       Guest    @relation(fields: [guestId], references: [id])
+  assignments RoomAssignment[]
+  history     ReservationStatusHistory[]
+
+  @@unique([tenantId, reference])
+  @@index([tenantId, propertyId, arrival])
+  @@map("reservations")
+}
+
+model ReservationStatusHistory {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @db.Uuid
+  reservationId String   @db.Uuid
+  fromStatus    String?
+  toStatus      String
+  changedBy     String   @db.Uuid
+  changedAt     DateTime @default(now())
+
+  reservation Reservation @relation(fields: [reservationId], references: [id])
+
+  @@index([reservationId])
+  @@map("reservation_status_history")
+}
+
+/// Overlap prevention is enforced by a Postgres exclusion constraint
+/// (see migration `room_assignment_exclusion`), not application code alone.
+model RoomAssignment {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @db.Uuid
+  propertyId    String   @db.Uuid
+  roomId        String   @db.Uuid
+  reservationId String   @db.Uuid
+  arrival       DateTime @db.Date
+  departure     DateTime @db.Date
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  room        Room        @relation(fields: [roomId], references: [id])
+  reservation Reservation @relation(fields: [reservationId], references: [id])
+
+  @@index([tenantId, roomId])
+  @@map("room_assignments")
+}
+
+// ---------- Operations ----------
+
+model HousekeepingTask {
+  id         String    @id @default(uuid()) @db.Uuid
+  tenantId   String    @db.Uuid
+  propertyId String    @db.Uuid
+  roomId     String    @db.Uuid
+  kind       String    @default("DEPARTURE") // DEPARTURE | STAYOVER | PRIORITY
+  status     String    @default("PENDING") // PENDING | IN_PROGRESS | DONE | INSPECTED
+  assignedTo String?   @db.Uuid
+  createdAt  DateTime  @default(now())
+  doneAt     DateTime?
+
+  property Property @relation(fields: [propertyId], references: [id])
+  room     Room     @relation(fields: [roomId], references: [id])
+
+  @@index([tenantId, propertyId, status])
+  @@map("housekeeping_tasks")
+}
+
+model MaintenanceRequest {
+  id         String    @id @default(uuid()) @db.Uuid
+  tenantId   String    @db.Uuid
+  propertyId String    @db.Uuid
+  roomId     String    @db.Uuid
+  title      String
+  status     String    @default("OPEN")
+  blocksRoom Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
+
+  property Property @relation(fields: [propertyId], references: [id])
+  room     Room     @relation(fields: [roomId], references: [id])
+
+  @@index([tenantId, propertyId, status])
+  @@map("maintenance_requests")
+}
+
+/// Append-only: UPDATE/DELETE blocked by DB trigger.
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String?  @db.Uuid
+  propertyId String?  @db.Uuid
+  actorId    String?  @db.Uuid
+  action     String
+  entityType String
+  entityId   String?
+  before     Json?
+  after      Json?
+  reason     String?
+  requestId  String?
+  at         DateTime @default(now())
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, at])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
