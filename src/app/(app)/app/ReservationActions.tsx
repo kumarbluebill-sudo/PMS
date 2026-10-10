@@ -1,4 +1,5 @@
 import { reservationAction } from "@/app/actions";
+import { openFolioAction } from "@/app/billing-actions";
 import { btnGhost } from "@/app/ui";
 import { roleHasPermission } from "@/server/auth/permissions";
 import type { Ctx } from "@/server/auth/context";
@@ -19,9 +20,18 @@ export function ReservationActions({ id, status, ctx, back }: { id: string; stat
           <input type="hidden" name="kind" value={b.kind} />
           <input type="hidden" name="back" value={back} />
           {b.kind === "cancel" && <input type="hidden" name="reason" value="Cancelled by staff" />}
+          {b.kind === "checkout" && roleHasPermission(ctx.role, "billing.waive", ctx.extra) && (
+            <input name="waive" placeholder="Waive balance: reason" className="mr-1 w-36 rounded border border-slate-300 p-1 text-xs" aria-label="Reason to waive outstanding balance" />
+          )}
           <button className={btnGhost}>{b.label}</button>
         </form>
       ))}
+      {roleHasPermission(ctx.role, "billing.view", ctx.extra) && ["CONFIRMED", "CHECKED_IN", "CHECKED_OUT"].includes(status) && (
+        <form action={openFolioAction}>
+          <input type="hidden" name="reservationId" value={id} />
+          <button className={btnGhost}>Folio</button>
+        </form>
+      )}
     </div>
   );
 }

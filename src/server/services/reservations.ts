@@ -6,6 +6,7 @@ import { withTenant } from "@/server/db/withTenant";
 import { AppError } from "@/server/errors";
 import { assertTransition, nightsBetween, type ReservationStatus } from "@/server/domain/stay";
 import { audit } from "./audit";
+import { folioBalance, postRoomNightsTx } from "./billing";
 
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const toDate = (s: string) => new Date(`${s}T00:00:00.000Z`);
@@ -200,10 +201,26 @@ export async function checkIn(db: PrismaClient, ctx: Ctx, id: string) {
   });
 }
 
-/** NOTE: folio/balance verification is added in the billing phase. */
-export async function checkOut(db: PrismaClient, ctx: Ctx, id: string) {
+/**
+ * Posts any remaining room-night charges, then refuses to complete the stay while the folio has an outstanding
+ * balance. A manager can waive it with a reason (audited).
+ */
+export async function checkOut(db: PrismaClient, ctx: Ctx, id: string, opts: { waiveReason?: string } = {}) {
   authorize(ctx, "frontdesk.checkout");
   return transition(db, ctx, id, "CHECKED_OUT", async (tx, r) => {
+    const { folioId } = await postRoomNightsTx(tx, ctx, r.id);
+    const balance = await folioBalance(tx, folioId);
+    if (balance > 0) {
+      if (!opts.waiveReason?.trim()) {
+        throw new AppError("CONFLICT", `There is an outstanding balance of ₹${(balance / 100).toFixed(2)}. Collect payment, or ask a manager to waive it.`);
+      }
+      authorize(ctx, "billing.waive");
+      await audit(tx, ctx, {
+        action: "checkout.waive_balance", entityType: "Reservation", entityId: r.id,
+        after: { balanceMinor: balance }, reason: opts.waiveReason.trim(),
+      });
+    }
+
     const a = await tx.roomAssignment.findFirst({ where: { reservationId: r.id, active: true } });
     if (a) {
       await tx.roomAssignment.update({ where: { id: a.id }, data: { active: false } });

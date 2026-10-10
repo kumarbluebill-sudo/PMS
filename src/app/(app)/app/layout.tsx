@@ -12,11 +12,18 @@ const NAV: { href: string; label: string; perm: Permission }[] = [
   { href: "/app/reservations", label: "Reservations", perm: "reservations.view" },
   { href: "/app/reservations/calendar", label: "Calendar", perm: "reservations.view" },
   { href: "/app/guests", label: "Guests", perm: "guests.view" },
+  { href: "/app/billing", label: "Folios", perm: "billing.view" },
+  { href: "/app/invoices", label: "Invoices", perm: "billing.view" },
+  { href: "/app/credit-notes", label: "Credit notes", perm: "billing.view" },
+  { href: "/app/payments", label: "Payments", perm: "billing.view" },
+  { href: "/app/cashier", label: "Cashier", perm: "cashier.operate" },
+  { href: "/app/accounting", label: "Accounting", perm: "accounting.view" },
   { href: "/app/rooms", label: "Rooms", perm: "rooms.view" },
   { href: "/app/room-types", label: "Room types", perm: "rooms.view" },
   { href: "/app/housekeeping", label: "Housekeeping", perm: "housekeeping.view" },
   { href: "/app/maintenance", label: "Maintenance", perm: "maintenance.manage" },
   { href: "/app/users", label: "Users", perm: "users.manage" },
+  { href: "/app/settings/tax", label: "GST & tax", perm: "tax.manage" },
   { href: "/app/audit-logs", label: "Audit log", perm: "audit.view" },
 ];
 

@@ -81,6 +81,31 @@ test("owner registers, enrols MFA, runs a stay end to end, and it is audited", a
   await page.goto("/app/front-desk");
   await page.getByRole("button", { name: "Check in" }).click();
   await expect(page.getByText("In house (1)")).toBeVisible();
+
+  // Check-out is refused while the folio has an unpaid balance (2 nights x Rs 4,500, unregistered so no GST).
+  await page.getByRole("button", { name: "Check out" }).click();
+  await expect(page.getByText(/outstanding balance of ₹9000\.00/)).toBeVisible();
+
+  // Open the folio, post room charges, take a UPI payment for the full balance.
+  await page.getByRole("button", { name: "Folio" }).click();
+  await page.getByRole("button", { name: "Post room-night charges" }).click();
+  await expect(page.getByText("Room charges posted.")).toBeVisible();
+  await expect(page.getByText("₹9,000.00").first()).toBeVisible();
+  const payForm = page.locator("form", { has: page.getByRole("button", { name: "Record payment" }) });
+  await payForm.getByLabel("Method").selectOption("UPI");
+  await payForm.getByLabel(/Reference/).fill("UTR-E2E-1");
+  await payForm.getByRole("button", { name: "Record payment" }).click();
+  await expect(page.getByText("Payment recorded.")).toBeVisible();
+  await expect(page.getByText("Balance due").locator("xpath=following-sibling::div")).toHaveText("₹0.00");
+
+  // Issue the invoice: property is not GST-registered, so it is a Bill of Supply with no tax.
+  await page.getByRole("button", { name: "Issue invoice" }).click();
+  await expect(page.getByRole("heading", { name: "Bill of Supply" })).toBeVisible();
+  await expect(page.getByText(/INVB\/\d{4}\/000001/).first()).toBeVisible();
+  await expect(page.getByText("No GST has been charged on this document.")).toBeVisible();
+
+  // Now check-out succeeds.
+  await page.goto("/app/front-desk");
   await page.getByRole("button", { name: "Check out" }).click();
   await expect(page.getByText("In house (0)")).toBeVisible();
 
@@ -90,7 +115,7 @@ test("owner registers, enrols MFA, runs a stay end to end, and it is audited", a
 
   // Audit trail captured the workflow.
   await page.goto("/app/audit-logs");
-  for (const action of ["reservation.create", "reservation.checked_in", "reservation.checked_out", "user.mfa_enabled"]) {
+  for (const action of ["reservation.create", "reservation.checked_in", "reservation.checked_out", "user.mfa_enabled", "payment.record", "invoice.issue"]) {
     await expect(page.getByRole("cell", { name: action, exact: true }).first()).toBeVisible();
   }
 

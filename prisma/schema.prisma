@@ -68,6 +68,11 @@ model Property {
   currency      String   @default("INR")
   checkInTime   String   @default("14:00")
   checkOutTime  String   @default("11:00")
+  legalName     String?
+  gstRegistered Boolean  @default(false)
+  gstin         String?
+  gstStateCode  String?
+  invoicePrefix String   @default("INV")
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -78,6 +83,9 @@ model Property {
   reservations Reservation[]
   tasks        HousekeepingTask[]
   maintenance  MaintenanceRequest[]
+  folios       Folio[]
+  shifts       CashShift[]
+  invoices     Invoice[]
 
   @@unique([tenantId, id])
   @@index([tenantId])
@@ -145,10 +153,14 @@ model Guest {
   phone     String?
   email     String?
   notes     String?
+  companyName  String?
+  gstin        String?
+  gstStateCode String?
   createdAt DateTime @default(now())
 
   tenant       Tenant        @relation(fields: [tenantId], references: [id])
   reservations Reservation[]
+  folios       Folio[]
 
   @@index([tenantId])
   @@map("guests")
@@ -176,6 +188,7 @@ model Reservation {
   guest       Guest    @relation(fields: [guestId], references: [id])
   assignments RoomAssignment[]
   history     ReservationStatusHistory[]
+  folios      Folio[]
 
   @@unique([tenantId, reference])
   @@index([tenantId, propertyId, arrival])
@@ -305,4 +318,268 @@ model EmailOutbox {
   createdAt DateTime @default(now())
 
   @@map("email_outbox")
+}
+
+// ---------- Billing, GST, accounting (Phase 2) ----------
+
+/// Effective-dated tax rule. Only APPROVED rules are used by the engine. Rates are basis points (1200 = 12.00%).
+model TaxRule {
+  id             String    @id @default(uuid()) @db.Uuid
+  tenantId       String    @db.Uuid
+  category       String // ROOM | FNB | SPA | BANQUET | LAUNDRY | TRANSPORT | EXTRA_BED | OTHER
+  sacCode        String?
+  description    String
+  treatment      String    @default("TAXABLE") // TAXABLE | EXEMPT | NIL_RATED
+  rateBp         Int       @default(0)
+  cessBp         Int       @default(0)
+  tariffMinMinor Int? // inclusive, per unit (e.g. room per night)
+  tariffMaxMinor Int? // exclusive
+  placeOfSupply  String    @default("PROPERTY_STATE") // PROPERTY_STATE | RECIPIENT_STATE
+  effectiveFrom  DateTime  @db.Date
+  effectiveTo    DateTime? @db.Date // exclusive
+  legalRef       String?
+  version        Int       @default(1)
+  status         String    @default("DRAFT") // DRAFT | APPROVED | RETIRED
+  createdBy      String    @db.Uuid
+  approvedBy     String?   @db.Uuid
+  approvedAt     DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([tenantId, category, status])
+  @@map("tax_rules")
+}
+
+model Folio {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @db.Uuid
+  propertyId    String   @db.Uuid
+  reservationId String   @db.Uuid
+  guestId       String   @db.Uuid
+  status        String   @default("OPEN")
+  createdAt     DateTime @default(now())
+
+  property    Property     @relation(fields: [propertyId], references: [id])
+  reservation Reservation  @relation(fields: [reservationId], references: [id])
+  guest       Guest        @relation(fields: [guestId], references: [id])
+  entries     FolioEntry[]
+  payments    Payment[]
+  refunds     Refund[]
+  invoices    Invoice[]
+
+  @@unique([reservationId])
+  @@index([tenantId, propertyId])
+  @@map("folios")
+}
+
+/// Append-only ledger line. balanceDeltaMinor is the signed effect on the amount the guest owes.
+model FolioEntry {
+  id                String    @id @default(uuid()) @db.Uuid
+  tenantId          String    @db.Uuid
+  propertyId        String    @db.Uuid
+  folioId           String    @db.Uuid
+  kind              String // CHARGE | DISCOUNT | REVERSAL | PAYMENT | REFUND
+  category          String
+  description       String
+  quantity          Int       @default(1)
+  netMinor          Int       @default(0)
+  taxMinor          Int       @default(0)
+  balanceDeltaMinor Int
+  taxInclusive      Boolean   @default(false)
+  taxDetail         Json?
+  taxRuleId         String?   @db.Uuid
+  serviceDate       DateTime? @db.Date
+  reversesEntryId   String?   @unique @db.Uuid
+  paymentId         String?   @db.Uuid
+  refundId          String?   @db.Uuid
+  idempotencyKey    String?
+  reason            String?
+  postedBy          String    @db.Uuid
+  postedAt          DateTime  @default(now())
+
+  folio Folio       @relation(fields: [folioId], references: [id])
+  line  InvoiceLine?
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([folioId])
+  @@map("folio_entries")
+}
+
+model Payment {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @db.Uuid
+  propertyId     String   @db.Uuid
+  folioId        String   @db.Uuid
+  method         String // CASH | UPI | CARD | BANK_TRANSFER | OTHER
+  amountMinor    Int
+  reference      String?
+  idempotencyKey String
+  shiftId        String?  @db.Uuid
+  receivedBy     String   @db.Uuid
+  receivedAt     DateTime @default(now())
+
+  folio Folio      @relation(fields: [folioId], references: [id])
+  shift CashShift? @relation(fields: [shiftId], references: [id])
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([folioId])
+  @@map("payments")
+}
+
+model Refund {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @db.Uuid
+  propertyId  String   @db.Uuid
+  folioId     String   @db.Uuid
+  method      String
+  amountMinor Int
+  reason      String
+  shiftId     String?  @db.Uuid
+  refundedBy  String   @db.Uuid
+  refundedAt  DateTime @default(now())
+
+  folio Folio      @relation(fields: [folioId], references: [id])
+  shift CashShift? @relation(fields: [shiftId], references: [id])
+
+  @@index([folioId])
+  @@map("refunds")
+}
+
+model InvoiceSequence {
+  id            String @id @default(uuid()) @db.Uuid
+  tenantId      String @db.Uuid
+  propertyId    String @db.Uuid
+  series        String
+  financialYear String
+  next          Int    @default(1)
+
+  @@unique([propertyId, series, financialYear])
+  @@map("invoice_sequences")
+}
+
+model Invoice {
+  id                String   @id @default(uuid()) @db.Uuid
+  tenantId          String   @db.Uuid
+  propertyId        String   @db.Uuid
+  folioId           String   @db.Uuid
+  kind              String // TAX_INVOICE | BILL_OF_SUPPLY | CREDIT_NOTE | DEBIT_NOTE
+  series            String
+  financialYear     String
+  seq               Int
+  number            String
+  originalInvoiceId String?  @db.Uuid
+  supplier          Json
+  recipient         Json
+  placeOfSupply     String?
+  netMinor          Int
+  cgstMinor         Int      @default(0)
+  sgstMinor         Int      @default(0)
+  igstMinor         Int      @default(0)
+  cessMinor         Int      @default(0)
+  grossMinor        Int
+  reason            String?
+  issuedBy          String   @db.Uuid
+  issuedAt          DateTime @default(now())
+
+  property Property      @relation(fields: [propertyId], references: [id])
+  folio    Folio         @relation(fields: [folioId], references: [id])
+  lines    InvoiceLine[]
+
+  @@unique([propertyId, number])
+  @@index([tenantId, propertyId, issuedAt])
+  @@map("invoices")
+}
+
+model InvoiceLine {
+  id           String @id @default(uuid()) @db.Uuid
+  tenantId     String @db.Uuid
+  invoiceId    String @db.Uuid
+  folioEntryId String @unique @db.Uuid
+  description  String
+  sacCode      String?
+  quantity     Int    @default(1)
+  netMinor     Int
+  cgstMinor    Int    @default(0)
+  sgstMinor    Int    @default(0)
+  igstMinor    Int    @default(0)
+  cessMinor    Int    @default(0)
+  grossMinor   Int
+  taxDetail    Json?
+
+  invoice Invoice    @relation(fields: [invoiceId], references: [id])
+  entry   FolioEntry @relation(fields: [folioEntryId], references: [id])
+
+  @@index([invoiceId])
+  @@map("invoice_lines")
+}
+
+model CashShift {
+  id             String    @id @default(uuid()) @db.Uuid
+  tenantId       String    @db.Uuid
+  propertyId     String    @db.Uuid
+  openedBy       String    @db.Uuid
+  openedAt       DateTime  @default(now())
+  openingMinor   Int
+  status         String    @default("OPEN") // OPEN | CLOSED
+  closedBy       String?   @db.Uuid
+  closedAt       DateTime?
+  countedMinor   Int?
+  expectedMinor  Int?
+  varianceMinor  Int?
+  totals         Json?
+  varianceReason String?
+  approvedBy     String?   @db.Uuid
+  approvedAt     DateTime?
+
+  property Property  @relation(fields: [propertyId], references: [id])
+  payments Payment[]
+  refunds  Refund[]
+
+  @@index([tenantId, propertyId, status])
+  @@map("cash_shifts")
+}
+
+model Account {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  code     String
+  name     String
+  type     String // ASSET | LIABILITY | EQUITY | REVENUE | EXPENSE
+
+  lines JournalLine[]
+
+  @@unique([tenantId, code])
+  @@map("accounts")
+}
+
+model JournalEntry {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @db.Uuid
+  propertyId String?  @db.Uuid
+  date       DateTime @db.Date
+  memo       String
+  sourceType String
+  sourceId   String
+  createdBy  String   @db.Uuid
+  createdAt  DateTime @default(now())
+
+  lines JournalLine[]
+
+  @@unique([tenantId, sourceType, sourceId])
+  @@map("journal_entries")
+}
+
+model JournalLine {
+  id          String @id @default(uuid()) @db.Uuid
+  tenantId    String @db.Uuid
+  entryId     String @db.Uuid
+  accountId   String @db.Uuid
+  debitMinor  Int    @default(0)
+  creditMinor Int    @default(0)
+
+  entry   JournalEntry @relation(fields: [entryId], references: [id])
+  account Account      @relation(fields: [accountId], references: [id])
+
+  @@index([entryId])
+  @@index([tenantId, accountId])
+  @@map("journal_lines")
 }

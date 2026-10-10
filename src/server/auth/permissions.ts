@@ -24,6 +24,19 @@ export const PERMISSIONS = [
   "subscription.manage",
   "backup.configure",
   "settings.manage",
+  "billing.view",
+  "billing.post",
+  "billing.discount",
+  "billing.waive",
+  "payments.record",
+  "payments.refund",
+  "invoices.issue",
+  "creditnotes.issue",
+  "tax.manage",
+  "tax.approve",
+  "cashier.operate",
+  "cashier.approve",
+  "accounting.view",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -81,6 +94,11 @@ export const ROLE_PERMISSIONS: Record<RoleKey, readonly Permission[]> = {
     "guests.manage",
     "rooms.view",
     "housekeeping.view",
+    "billing.view",
+    "billing.post",
+    "payments.record",
+    "invoices.issue",
+    "cashier.operate",
   ],
   RESERVATION_EXECUTIVE: [
     "reservations.view",
@@ -91,12 +109,19 @@ export const ROLE_PERMISSIONS: Record<RoleKey, readonly Permission[]> = {
     "guests.manage",
     "rooms.view",
   ],
-  ACCOUNTS_MANAGER: ["reservations.view", "guests.view", "finance.view", "reports.export", "audit.view"],
-  CASHIER: ["reservations.view", "guests.view", "finance.view", "frontdesk.checkout"],
+  ACCOUNTS_MANAGER: [
+    "reservations.view", "guests.view", "finance.view", "reports.export", "audit.view", "billing.view", "billing.post",
+    "billing.discount", "payments.record", "payments.refund", "invoices.issue", "creditnotes.issue", "tax.manage",
+    "tax.approve", "cashier.operate", "cashier.approve", "accounting.view",
+  ],
+  CASHIER: [
+    "reservations.view", "guests.view", "finance.view", "frontdesk.checkout", "billing.view", "payments.record",
+    "cashier.operate",
+  ],
   HOUSEKEEPING: ["rooms.view", "housekeeping.view", "housekeeping.update"],
   MAINTENANCE: ["rooms.view", "maintenance.manage"],
-  REVENUE_MANAGER: ["reservations.view", "rooms.view", "rates.manage", "finance.view", "reports.export"],
-  AUDITOR: ["reservations.view", "guests.view", "rooms.view", "finance.view", "audit.view"],
+  REVENUE_MANAGER: ["reservations.view", "rooms.view", "rates.manage", "finance.view", "reports.export", "billing.view"],
+  AUDITOR: ["reservations.view", "guests.view", "rooms.view", "finance.view", "audit.view", "billing.view", "accounting.view"],
 };
 
 export function roleHasPermission(

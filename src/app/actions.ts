@@ -117,7 +117,7 @@ export async function reservationAction(fd: FormData) {
   await run(back, async () => {
     const db = getDb();
     if (kind === "checkin") return checkIn(db, ctx, id);
-    if (kind === "checkout") return checkOut(db, ctx, id);
+    if (kind === "checkout") return checkOut(db, ctx, id, { waiveReason: str(fd.get("waive")).trim() || undefined });
     if (kind === "noshow") return markNoShow(db, ctx, id);
     if (kind === "cancel") return cancelReservation(db, ctx, id, str(fd.get("reason")) || "Cancelled by staff");
   });
