@@ -47,6 +47,11 @@ export const ROLES = [
 
 export type RoleKey = (typeof ROLES)[number];
 
+/** Roles that must enrol in TOTP MFA before using the app. */
+export const MFA_REQUIRED_ROLES: readonly RoleKey[] = [
+  "HOTEL_OWNER", "GROUP_ADMIN", "GENERAL_MANAGER", "PROPERTY_MANAGER", "ACCOUNTS_MANAGER",
+];
+
 const ALL: Permission[] = [...PERMISSIONS];
 
 const MANAGER: Permission[] = ALL.filter(

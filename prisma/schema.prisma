@@ -32,6 +32,7 @@ model User {
   active       Boolean  @default(true)
   mfaSecretEnc String?
   mfaEnabled   Boolean  @default(false)
+  emailVerifiedAt DateTime?
   sessionEpoch Int      @default(0) // bump to revoke all sessions
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -274,4 +275,34 @@ model AuditLog {
   @@index([tenantId, at])
   @@index([entityType, entityId])
   @@map("audit_logs")
+}
+
+/// One-time tokens (password reset, invitations, email verification). Only a SHA-256 hash is stored.
+model AuthToken {
+  id          String    @id @default(uuid()) @db.Uuid
+  kind        String // RESET | INVITE | VERIFY
+  tokenHash   String    @unique
+  userId      String?   @db.Uuid
+  email       String?
+  tenantId    String?   @db.Uuid
+  role        String?
+  propertyIds String[]  @default([])
+  expiresAt   DateTime
+  usedAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([kind, email])
+  @@map("auth_tokens")
+}
+
+/// Development/placeholder email transport: messages are recorded here until a real provider is configured.
+model EmailOutbox {
+  id        String   @id @default(uuid()) @db.Uuid
+  toEmail   String
+  subject   String
+  body      String
+  status    String   @default("QUEUED") // QUEUED | SENT | FAILED
+  createdAt DateTime @default(now())
+
+  @@map("email_outbox")
 }

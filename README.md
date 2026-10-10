@@ -1,36 +1,22 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# MK Solutions Hotel PMS
 
-## Getting Started
+Multi-tenant cloud PMS for hotels and resorts. Phase 1 (core PMS) is built; billing/GST, reporting and channel management are planned. See [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) for what works and what does not, and [docs/](docs/) for architecture and security notes.
 
-First, run the development server:
-
+## Local setup
 ```bash
+npm install
+cp .env.example .env            # fill AUTH_SECRET and APP_ENCRYPTION_KEY (openssl rand -base64 32)
+npm run db:start                # local Postgres via embedded-postgres (or: docker compose up -d)
+npx prisma migrate dev          # create schema
+# create the restricted runtime role used by the app (see tests/integration/global-setup.ts)
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
+The app must connect through `APP_DATABASE_URL` (role without BYPASSRLS) so tenant isolation policies apply; `DATABASE_URL` is for migrations.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Checks
+```bash
+npm run lint && npm run typecheck
+npm test                        # unit + integration (needs the local database running)
+npm run build && npm run test:e2e   # Playwright, uses installed Edge (PW_CHANNEL=chrome to change)
+```
+Dev emails (reset/invite/verify links) are stored in the `email_outbox` table until a mail provider is configured.

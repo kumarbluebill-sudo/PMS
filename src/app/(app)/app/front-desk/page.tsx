@@ -1,4 +1,7 @@
-import { Card, ErrorBanner, fmtDate, PageHeader } from "@/app/ui";
+import { extendStayAction, moveRoomAction } from "@/app/account-actions";
+import { btnGhost, Card, ErrorBanner, fmtDate, PageHeader } from "@/app/ui";
+import { listRooms } from "@/server/services/rooms";
+import { roleHasPermission } from "@/server/auth/permissions";
 import { getDb } from "@/server/db/client";
 import { getCtx } from "@/server/session";
 import { listReservations } from "@/server/services/reservations";
@@ -9,6 +12,8 @@ export default async function FrontDesk({ searchParams }: PageProps<"/app/front-
   const ctx = await getCtx();
   const db = getDb();
   const today = fmtDate(new Date());
+  const rooms = await listRooms(db, ctx);
+  const canModify = roleHasPermission(ctx.role, "reservations.modify", ctx.extra);
   const [arrivals, departures, inHouse] = await Promise.all([
     listReservations(db, ctx, { status: "CONFIRMED", arrivalOn: today }),
     listReservations(db, ctx, { status: "CHECKED_IN", departureOn: today }),
@@ -24,6 +29,24 @@ export default async function FrontDesk({ searchParams }: PageProps<"/app/front-
                 {r.guest.name} <span className="text-slate-500">Room {r.assignments[0]?.room.number ?? "—"}</span>
               </span>
               <ReservationActions id={r.id} status={r.status} ctx={ctx} back="/app/front-desk" />
+              {canModify && (r.status === "CONFIRMED" || r.status === "CHECKED_IN") && (
+                <details className="w-full text-xs">
+                  <summary className="cursor-pointer text-slate-600">Extend / move</summary>
+                  <form action={extendStayAction} className="mt-1 flex gap-1">
+                    <input type="hidden" name="id" value={r.id} />
+                    <input type="date" name="departure" required defaultValue={fmtDate(r.departure)} className="rounded border p-1" aria-label="New departure date" />
+                    <button className={btnGhost}>Change departure</button>
+                  </form>
+                  <form action={moveRoomAction} className="mt-1 flex flex-wrap gap-1">
+                    <input type="hidden" name="id" value={r.id} />
+                    <select name="roomId" className="rounded border p-1" aria-label="New room">
+                      {rooms.map((x) => <option key={x.id} value={x.id}>{x.number}</option>)}
+                    </select>
+                    <input name="reason" required placeholder="Reason" className="rounded border p-1" />
+                    <button className={btnGhost}>Move room</button>
+                  </form>
+                </details>
+              )}
             </li>
           ))}
         </ul>

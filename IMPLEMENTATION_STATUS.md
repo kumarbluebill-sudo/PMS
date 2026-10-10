@@ -1,39 +1,39 @@
 # Implementation Status
 
-Last updated: 2026-10-10. "Done" means verified by a passing automated test or an HTTP smoke test.
+Last updated: 2026-10-10. "Done" means verified by an automated test (Vitest 42 tests, Playwright 2 tests) or a recorded manual check.
 
 ## Phase 1: Foundation + core PMS
 
 | Module | Status | Verification |
 |---|---|---|
-| Scaffold (Next.js 16, strict TS, Tailwind 4), CI workflow, security headers/CSP | Done | build + lint + typecheck pass |
-| Permission matrix (14 roles) | Done | unit tests |
-| Stay dates (half-open) + reservation state machine | Done | unit tests |
-| Prisma schema + migrations (init, constraints) | Done | applied |
-| DB exclusion constraint against double booking | Done | integration: 8 concurrent -> 1 wins; service level: 6 requests/2 rooms -> 2 succeed |
-| Append-only audit log (DB trigger) | Done | integration |
-| Tenant isolation (Postgres RLS + `withTenant`) | Done | integration with non-superuser role; cross-tenant service tests |
-| Auth.js credentials login, JWT carries only user id + session epoch | Done | HTTP smoke test (login, redirect when unauthenticated, bad password) |
-| Server-derived context (tenant/role/property from DB, forged property id ignored, revoked epoch rejected) | Done | integration |
-| Login brute-force limiter | Done, in-memory per instance | needs shared store (Redis) before multi-instance deploy |
-| Tenant registration (tenant + owner + first property) | Done | integration + smoke |
-| Room types, rooms, guests (contact data hidden from Auditor) | Done | integration |
-| Reservations: create/auto-assign room, cancel, no-show, check-in (room readiness), check-out (room -> dirty + task) | Done | integration |
-| Housekeeping statuses (inspection needs supervisor permission), maintenance requests blocking sale | Done | integration (permissions); blocking logic not yet directly tested |
-| UI: login, register, dashboard, front desk, reservations, guests, rooms, room types, housekeeping, maintenance, audit log | Done (functional, basic styling) | HTTP smoke test: all pages 200 for owner |
+| Scaffold, CI workflow, security headers | Done | build, lint, typecheck |
+| Permission matrix (14 roles) + custom per-member extra permissions | Done | unit + integration |
+| Stay dates (half-open), reservation state machine | Done | unit |
+| DB: exclusion constraint vs double booking, append-only audit, RLS | Done | integration (non-superuser role) |
+| Auth.js login, session revocation (epoch) | Done | integration + e2e |
+| TOTP MFA: enrol, login challenge, forced for privileged roles, admin reset | Done | integration + e2e |
+| Password reset (single-use, expiring, revokes sessions), email verification | Done | integration |
+| Invitations, member management (role, properties, deactivate, extra permissions), anti-escalation, last-owner protection | Done | integration |
+| Tenant registration, onboarding checklist + property settings | Done (checklist, not a multi-step wizard) | e2e |
+| Rooms, room types, guests, reservations (auto-assign), cancel, no-show | Done | integration + e2e |
+| Check-in (room readiness), check-out (room dirty + task), stay extension, room move | Done | integration (+ e2e for check-in/out) |
+| Reservation calendar (14-day grid) | Done | integration (data) |
+| Housekeeping, maintenance (blocking + resolve) | Done | integration |
+| Audit log screen, full workflow audited | Done | e2e |
+| Blueprint docs (`docs/`) | Written; deployment/backup docs are plans, unexercised | n/a |
 
-## Known gaps in Phase 1 (honest list)
-- **MFA, password reset, email verification**: not implemented (`mfaSecretEnc` columns exist, unused). Required before pilot.
-- **Onboarding wizard, reservation calendar view, stay extension, room move, user/role management UI, custom roles**: not built. Team members cannot be invited yet (only the owner exists after registration).
-- **Playwright e2e**: not set up; verification so far is Vitest integration tests plus a curl-based smoke test.
-- **Check-out has no folio/balance check** (billing phase).
-- Housekeeping and maintenance pages have no history/assignment features; maintenance requests cannot be resolved from the UI yet.
-- RLS covers property-scoped tables; `audit_logs`, `users`, `tenant_memberships` rely on application-layer filtering.
-- Production should connect as a non-BYPASSRLS role (`APP_DATABASE_URL`), with a separate admin URL for migrations.
-- Most Phase 1 blueprint docs (ARCHITECTURE, SECURITY, etc.) are not written yet.
+## Known gaps (Phase 1)
+- **Email**: no real provider; messages go to `email_outbox` (contains live tokens: dev only).
+- **MFA recovery codes**, login history UI, failed-login persistence/alerts: not built.
+- **Rate limiter** is in-memory per instance.
+- Calendar page and the UI forms for extend/move/users/onboarding are only covered through services, not browser tests; authenticated mobile layouts are untested.
+- Onboarding is a checklist page, not the full 7-step wizard (tax/billing/channel steps belong to later phases).
+- Custom roles are per-member extra grants, not named reusable roles.
+- Guests: no edit, merge, identity documents, or detail/history page.
+- Reservations: no edit of dates/guests (other than extend departure and room move), no groups/multi-room, no rate plans or pricing.
+- CSP allows inline scripts; accessibility not audited.
+- Playwright not in CI (needs a browser in the runner).
+- Nothing deployed; backups/restore not implemented or tested.
 
 ## Not started (later phases)
-Folios, GST engine, invoices, payments, accounting, cashier; reports/analytics; channel manager; booking engine; SaaS billing; backups dashboard; PWA; help center; Vercel deployment config.
-
-## Environment notes
-Docker is not installed on the dev machine; local Postgres runs via `embedded-postgres` (`npm run db:start`). Create the `pms_app` role as in `tests/integration/global-setup.ts`. Prisma pinned to 7.10.0 (`latest` is an RC).
+Folios, GST, invoices, payments, accounting, cashier; reports; rates; channel manager; booking engine; SaaS billing; PWA; help center; platform admin.

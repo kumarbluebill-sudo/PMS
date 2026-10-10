@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { logoutAction, switchPropertyAction } from "@/app/actions";
+import { resendVerificationAction } from "@/app/account-actions";
 import { getCtx } from "@/server/session";
 import { getDb } from "@/server/db/client";
 import { withTenant } from "@/server/db/withTenant";
@@ -9,11 +10,13 @@ const NAV: { href: string; label: string; perm: Permission }[] = [
   { href: "/app/dashboard", label: "Dashboard", perm: "rooms.view" },
   { href: "/app/front-desk", label: "Front desk", perm: "frontdesk.checkin" },
   { href: "/app/reservations", label: "Reservations", perm: "reservations.view" },
+  { href: "/app/reservations/calendar", label: "Calendar", perm: "reservations.view" },
   { href: "/app/guests", label: "Guests", perm: "guests.view" },
   { href: "/app/rooms", label: "Rooms", perm: "rooms.view" },
   { href: "/app/room-types", label: "Room types", perm: "rooms.view" },
   { href: "/app/housekeeping", label: "Housekeeping", perm: "housekeeping.view" },
   { href: "/app/maintenance", label: "Maintenance", perm: "maintenance.manage" },
+  { href: "/app/users", label: "Users", perm: "users.manage" },
   { href: "/app/audit-logs", label: "Audit log", perm: "audit.view" },
 ];
 
@@ -55,7 +58,14 @@ export default async function AppLayout({ children }: LayoutProps<"/app">) {
           </button>
         </form>
       </aside>
-      <main className="flex-1 bg-slate-50 p-4 md:p-6">{children}</main>
+      <main className="flex-1 bg-slate-50 p-4 md:p-6">
+        {!ctx.emailVerified && (
+          <form action={resendVerificationAction} className="mb-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+            Your email is not verified. <button className="underline">Resend verification email</button>
+          </form>
+        )}
+        {children}
+      </main>
     </div>
   );
 }

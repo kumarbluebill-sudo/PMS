@@ -11,6 +11,8 @@ export type Ctx = {
   propertyId: string | null;
   accessiblePropertyIds: string[];
   requestId: string;
+  mfaEnabled: boolean;
+  emailVerified: boolean;
 };
 
 const ALL_PROPERTY_ROLES: RoleKey[] = ["HOTEL_OWNER", "GROUP_ADMIN", "GENERAL_MANAGER"];
@@ -57,6 +59,8 @@ export async function loadContext(
     propertyId,
     accessiblePropertyIds: accessible,
     requestId: crypto.randomUUID(),
+    mfaEnabled: user.mfaEnabled,
+    emailVerified: !!user.emailVerifiedAt,
   };
 }
 

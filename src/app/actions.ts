@@ -10,6 +10,7 @@ import { getCtx, PROPERTY_COOKIE } from "@/server/session";
 import { toSafeError } from "@/server/errors";
 import { rateLimit } from "@/server/rateLimit";
 import { registerTenant } from "@/server/services/tenant";
+import { sendVerification } from "@/server/services/accounts";
 import { createRoom, createRoomType } from "@/server/services/rooms";
 import { createGuest } from "@/server/services/guests";
 import { cancelReservation, checkIn, checkOut, createReservation, markNoShow } from "@/server/services/reservations";
@@ -37,18 +38,19 @@ export async function registerAction(fd: FormData) {
   let error: string | null = limited ? "Too many sign-ups right now. Try again later." : null;
   if (!error) {
     try {
-      await registerTenant(getDb(), raw);
+      const r = await registerTenant(getDb(), raw);
+      await sendVerification(getDb(), r.userId);
     } catch (e) {
       error = toSafeError(e).message;
     }
   }
   if (error) redirect(`/register?error=${encodeURIComponent(error)}`);
-  await signIn("credentials", { email: str(fd.get("email")), password: str(fd.get("password")), redirectTo: "/app/dashboard" });
+  await signIn("credentials", { email: str(fd.get("email")), password: str(fd.get("password")), redirectTo: "/onboarding" });
 }
 
 export async function loginAction(fd: FormData) {
   try {
-    await signIn("credentials", { email: str(fd.get("email")), password: str(fd.get("password")), redirectTo: "/app/dashboard" });
+    await signIn("credentials", { email: str(fd.get("email")), password: str(fd.get("password")), code: str(fd.get("code")), redirectTo: "/app/dashboard" });
   } catch (e) {
     if (e instanceof AuthError) redirect("/login?error=Invalid%20email%20or%20password");
     throw e;
