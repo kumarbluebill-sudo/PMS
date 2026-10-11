@@ -110,7 +110,7 @@ export async function roomBoard(db: PrismaClient, ctx: Ctx, input: BoardFilter =
       where: {
         propertyId,
         active: true,
-        reservation: { status: { in: ["CHECKED_IN", "CONFIRMED"] } },
+        reservation: { status: { in: ["CHECKED_IN", "CONFIRMED", "TENTATIVE"] } },
         OR: [{ departure: { gte: toDate(date) } }, { reservation: { status: "CHECKED_IN" } }],
       },
       include: { reservation: { select: { id: true, reference: true, status: true, arrival: true, departure: true, guestId: true, roomTypeId: true, guest: { select: { name: true } } } } },
@@ -165,7 +165,7 @@ export async function roomBoard(db: PrismaClient, ctx: Ctx, input: BoardFilter =
       const list = (aByRoom.get(room.id) ?? []).slice().sort((a, b) => +a.arrival - +b.arrival);
       const inHouse = list.find((a) => a.reservation.status === "CHECKED_IN");
       const projected = list.find((a) => iso(a.arrival) < date && iso(a.departure) >= date);
-      const upcomingA = list.find((a) => a.reservation.status === "CONFIRMED" && iso(a.arrival) >= date);
+      const upcomingA = list.find((a) => a.reservation.status !== "CHECKED_IN" && iso(a.arrival) >= date);
       const requests = oByRoom.get(room.id) ?? [];
       const openBlocks = requests.filter((m) => m.blocksRoom);
       const window = (m: (typeof requests)[number]) => ({

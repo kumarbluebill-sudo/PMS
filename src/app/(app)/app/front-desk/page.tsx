@@ -5,13 +5,14 @@ import { roleHasPermission } from "@/server/auth/permissions";
 import { getDb } from "@/server/db/client";
 import { getCtx } from "@/server/session";
 import { listReservations } from "@/server/services/reservations";
+import { propertyToday } from "@/server/services/roomBlocks";
 import { ReservationActions } from "../ReservationActions";
 
 export default async function FrontDesk({ searchParams }: PageProps<"/app/front-desk">) {
   const { error } = await searchParams;
   const ctx = await getCtx();
   const db = getDb();
-  const today = fmtDate(new Date());
+  const today = await propertyToday(db, ctx);
   const rooms = await listRooms(db, ctx);
   const canModify = roleHasPermission(ctx.role, "reservations.modify", ctx.extra);
   const [arrivals, departures, inHouse] = await Promise.all([
@@ -57,9 +58,6 @@ export default async function FrontDesk({ searchParams }: PageProps<"/app/front-
     <>
       <PageHeader title="Front desk" subtitle={`Today: ${today}`} />
       <ErrorBanner message={typeof error === "string" ? error : undefined} />
-      <p className="mb-3 text-xs text-slate-500">
-        Check-out does not yet verify folio balances; billing arrives in the next phase.
-      </p>
       <div className="grid gap-4 md:grid-cols-3">
         {section("Arrivals", arrivals)}
         {section("Departures", departures)}

@@ -21,6 +21,7 @@ Run: `npm run db:start` (local Postgres, keep running) then
 | Money parsing | Unit | no float error, junk rejected |
 | Room board | Unit + Integration + E2E | status precedence, timezone dates; every room listed, status/guest/checkout match the active stay, cards reconcile with rooms, out-of-order/maintenance rooms cannot be sold, filters/sort, future-date projection, role redaction, tenant isolation; board visible with text status, no overflow at 390px |
 | Room blocks | Unit + Integration + E2E | report vs block vs out of order, dated windows (inclusive end, arrival on last blocked day), form validation, in-house guest and overlapping-booking handling, check-in refused, approval needs another manager, resolution needs note + readiness, restored room needs cleaning, history append-only + RLS, role checks |
+| Booking | Unit + Integration + E2E | quote maths (rate, discount, GST on/off/unconfigured), date validation, mobile validation, multi-room groups, occupancy, concurrency (6 for 1 suite -> 1; 5 for 3 rooms -> 3), specific room, tampered totals ignored, sources, discount permission + reason + agreed rate drives charges, advance recorded / failure keeps the booking, tentative hold/confirm/cancel, confirmation access; availability then save flow at 1280 and 390px |
 | Billing UI | E2E | checkout refused with balance, post charges, UPI payment, bill of supply, checkout |
 
 ## Not covered yet

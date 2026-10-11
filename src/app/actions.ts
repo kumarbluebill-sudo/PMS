@@ -7,13 +7,15 @@ import { AuthError } from "next-auth";
 import { signIn, signOut } from "@/auth";
 import { getDb } from "@/server/db/client";
 import { getCtx, PROPERTY_COOKIE } from "@/server/session";
-import { toSafeError } from "@/server/errors";
+import { AppError, toSafeError } from "@/server/errors";
 import { rateLimit } from "@/server/rateLimit";
 import { registerTenant } from "@/server/services/tenant";
+import { createBooking } from "@/server/services/booking";
+import { rupeesToMinor } from "@/server/money";
 import { sendVerification } from "@/server/services/accounts";
 import { createRoom, createRoomType, setRoomFloor } from "@/server/services/rooms";
 import { createGuest } from "@/server/services/guests";
-import { cancelReservation, checkIn, checkOut, createReservation, markNoShow } from "@/server/services/reservations";
+import { cancelReservation, checkIn, checkOut, confirmReservation, markNoShow } from "@/server/services/reservations";
 import { createMaintenanceRequest, setRoomStatus } from "@/server/services/housekeeping";
 
 const num = (v: FormDataEntryValue | null, d = 0) => (v === null || v === "" ? d : Number(v));
@@ -104,19 +106,55 @@ export async function addGuestAction(fd: FormData) {
   );
 }
 
-export async function addReservationAction(fd: FormData) {
+/** "10" or "12.5" (percent) -> basis points. */
+function percentToBp(v: string): number | undefined {
+  const t = v.trim();
+  if (!t) return undefined;
+  if (!/^d{1,3}(.d{1,2})?$/.test(t) || Number(t) > 100) throw new AppError("VALIDATION", "Enter a discount percentage between 0 and 100.");
+  const bp = Math.round(Number(t) * 100);
+  return bp > 0 ? bp : undefined;
+}
+const rupeesOpt = (v: string) => (v.trim() ? rupeesToMinor(v) : undefined);
+
+export async function addBookingAction(fd: FormData) {
   const ctx = await getCtx();
-  await run("/app/reservations", () =>
-    createReservation(getDb(), ctx, {
-      guestId: str(fd.get("guestId")),
-      roomTypeId: str(fd.get("roomTypeId")),
-      arrival: str(fd.get("arrival")),
-      departure: str(fd.get("departure")),
-      adults: num(fd.get("adults"), 1),
-      children: num(fd.get("children"), 0),
-      source: str(fd.get("source")) || "DIRECT",
-    }),
-  );
+  const keep = new URLSearchParams();
+  for (const k of ["roomTypeId", "roomId", "arrival", "departure", "rooms", "adults", "children", "discountPct", "discountAmt"]) {
+    const v = str(fd.get(k));
+    if (v) keep.set(k, v);
+  }
+  keep.set("check", "1");
+  let error: string | null = null;
+  let dest: string | null = null;
+  try {
+    const guestId = str(fd.get("guestId"));
+    const advanceAmt = rupeesOpt(str(fd.get("advanceAmt")));
+    const r = await createBooking(getDb(), ctx, {
+      ...(guestId
+        ? { guestId, mobile: str(fd.get("g_mobile")) || undefined }
+        : {
+            newGuest: {
+              name: str(fd.get("g_name")), mobile: str(fd.get("g_mobile")), email: str(fd.get("g_email")) || undefined,
+              address: str(fd.get("g_address")) || undefined, idType: str(fd.get("g_idType")) || undefined, idNumber: str(fd.get("g_idNumber")) || undefined,
+            },
+          }),
+      roomTypeId: str(fd.get("roomTypeId")), roomId: str(fd.get("roomId")) || undefined,
+      arrival: str(fd.get("arrival")), departure: str(fd.get("departure")),
+      rooms: num(fd.get("rooms"), 1), adults: num(fd.get("adults"), 1), children: num(fd.get("children"), 0),
+      source: str(fd.get("source")) || "WALK_IN", companyName: str(fd.get("companyName")) || undefined, agentName: str(fd.get("agentName")) || undefined,
+      notes: str(fd.get("notes")) || undefined, status: str(fd.get("status")) || "CONFIRMED",
+      discountPercentBp: percentToBp(str(fd.get("discountPct"))), discountAmountMinor: rupeesOpt(str(fd.get("discountAmt"))),
+      discountReason: str(fd.get("discountReason")) || undefined,
+      ...(advanceAmt ? { advance: { amountMinor: advanceAmt, method: str(fd.get("advanceMethod")) || "CASH", reference: str(fd.get("advanceRef")) || undefined } } : {}),
+    });
+    const q = r.advance.error ? `?advanceError=${encodeURIComponent(r.advance.error)}` : "";
+    dest = `/app/reservations/${r.reservations[0].id}/confirmation${q}`;
+  } catch (e) {
+    error = toSafeError(e).message;
+  }
+  revalidatePath("/app", "layout");
+  if (error) redirect(`/app/reservations?${keep}&error=${encodeURIComponent(error)}`);
+  redirect(dest!);
 }
 
 export async function reservationAction(fd: FormData) {
@@ -127,6 +165,7 @@ export async function reservationAction(fd: FormData) {
   await run(back, async () => {
     const db = getDb();
     if (kind === "checkin") return checkIn(db, ctx, id);
+    if (kind === "confirm") return confirmReservation(db, ctx, id);
     if (kind === "checkout") return checkOut(db, ctx, id, { waiveReason: str(fd.get("waive")).trim() || undefined });
     if (kind === "noshow") return markNoShow(db, ctx, id);
     if (kind === "cancel") return cancelReservation(db, ctx, id, str(fd.get("reason")) || "Cancelled by staff");

@@ -1,72 +1,13 @@
-import { z } from "zod";
-import { randomBytes } from "node:crypto";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { authorize, requireProperty, type Ctx } from "@/server/auth/context";
 import { withTenant } from "@/server/db/withTenant";
 import { AppError } from "@/server/errors";
-import { blockCoversDate, blockOverlapsStay } from "@/server/domain/roomBlock";
+import { blockCoversDate } from "@/server/domain/roomBlock";
 import { assertTransition, nightsBetween, type ReservationStatus } from "@/server/domain/stay";
 import { audit } from "./audit";
+import { findFreeRooms, toDate } from "./availability";
 import { folioBalance, postRoomNightsTx } from "./billing";
 
-const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
-const toDate = (s: string) => new Date(`${s}T00:00:00.000Z`);
-
-export const reservationSchema = z.object({
-  guestId: z.string().uuid(),
-  roomTypeId: z.string().uuid(),
-  arrival: day,
-  departure: day,
-  adults: z.number().int().min(1).max(20).default(1),
-  children: z.number().int().min(0).max(20).default(0),
-  source: z.enum(["DIRECT", "WALK_IN", "PHONE", "EMAIL", "WEBSITE", "OTA", "AGENT", "CORPORATE"]).default("DIRECT"),
-  notes: z.string().trim().max(1000).optional(),
-});
-
-const isOverlapError = (e: unknown) =>
-  e instanceof Error &&
-  /no_overlap|23P01|exclusion constraint/i.test(e.message + JSON.stringify((e as { meta?: unknown }).meta ?? ""));
-
-const newReference = () => `MK-${randomBytes(4).toString("hex").toUpperCase()}`;
-
-/** Rooms of a type that are sellable and free for [arrival, departure). */
-export async function findFreeRooms(
-  tx: Prisma.TransactionClient,
-  propertyId: string,
-  roomTypeId: string,
-  arrival: string,
-  departure: string,
-) {
-  // A block removes a room only for the dates it covers; an out-of-order flag with no open block stays excluded.
-  const blocking = await tx.maintenanceRequest.findMany({
-    where: { propertyId, blocksRoom: true, status: { not: "RESOLVED" } },
-    select: { roomId: true, startDate: true, expectedResolution: true },
-  });
-  const blockedForStay = new Set(
-    blocking
-      .filter((b) =>
-        blockOverlapsStay(
-          { startDate: b.startDate ? b.startDate.toISOString().slice(0, 10) : null, expectedResolution: b.expectedResolution ? b.expectedResolution.toISOString().slice(0, 10) : null },
-          arrival,
-          departure,
-        ),
-      )
-      .map((b) => b.roomId),
-  );
-  const hasOpenBlock = new Set(blocking.map((b) => b.roomId));
-  const rooms = await tx.room.findMany({
-    where: {
-      propertyId,
-      roomTypeId,
-      id: { notIn: [...blockedForStay] },
-      assignments: {
-        none: { active: true, arrival: { lt: toDate(departure) }, departure: { gt: toDate(arrival) } },
-      },
-    },
-    orderBy: { number: "asc" },
-  });
-  return rooms.filter((r) => !r.outOfOrder || hasOpenBlock.has(r.id));
-}
 
 export async function searchAvailability(
   db: PrismaClient,
@@ -78,79 +19,6 @@ export async function searchAvailability(
   nightsBetween(input.arrival, input.departure);
   return withTenant(db, ctx.tenantId, (tx) =>
     findFreeRooms(tx, propertyId, input.roomTypeId, input.arrival, input.departure),
-  );
-}
-
-export async function createReservation(db: PrismaClient, ctx: Ctx, input: unknown) {
-  authorize(ctx, "reservations.create");
-  const propertyId = requireProperty(ctx);
-  const d = reservationSchema.parse(input);
-  nightsBetween(d.arrival, d.departure);
-
-  const candidates = await withTenant(db, ctx.tenantId, async (tx) => {
-    const [guest, rt] = await Promise.all([
-      tx.guest.findFirst({ where: { id: d.guestId } }),
-      tx.roomType.findFirst({ where: { id: d.roomTypeId, propertyId } }),
-    ]);
-    if (!guest) throw new AppError("NOT_FOUND", "Guest not found.");
-    if (!rt) throw new AppError("NOT_FOUND", "Room type not found.");
-    if (d.adults > rt.maxAdults || d.children > rt.maxChildren) {
-      throw new AppError("VALIDATION", "Guest count exceeds the room type's occupancy.");
-    }
-    return findFreeRooms(tx, propertyId, d.roomTypeId, d.arrival, d.departure);
-  });
-
-  // Each candidate is tried in its own transaction: the DB exclusion constraint is the
-  // final arbiter if another receptionist grabs the room first.
-  for (const room of candidates) {
-    try {
-      return await withTenant(db, ctx.tenantId, async (tx) => {
-        const r = await tx.reservation.create({
-          data: {
-            tenantId: ctx.tenantId,
-            propertyId,
-            reference: newReference(),
-            guestId: d.guestId,
-            roomTypeId: d.roomTypeId,
-            source: d.source,
-            arrival: toDate(d.arrival),
-            departure: toDate(d.departure),
-            adults: d.adults,
-            children: d.children,
-            notes: d.notes,
-            status: "CONFIRMED",
-            createdBy: ctx.userId,
-          },
-        });
-        await tx.roomAssignment.create({
-          data: {
-            tenantId: ctx.tenantId,
-            propertyId,
-            roomId: room.id,
-            reservationId: r.id,
-            arrival: r.arrival,
-            departure: r.departure,
-          },
-        });
-        await tx.reservationStatusHistory.create({
-          data: { tenantId: ctx.tenantId, reservationId: r.id, toStatus: "CONFIRMED", changedBy: ctx.userId },
-        });
-        await audit(tx, ctx, {
-          action: "reservation.create",
-          entityType: "Reservation",
-          entityId: r.id,
-          after: { reference: r.reference, roomId: room.id, arrival: d.arrival, departure: d.departure },
-        });
-        return { ...r, roomId: room.id, roomNumber: room.number };
-      });
-    } catch (e) {
-      if (isOverlapError(e)) continue;
-      throw e;
-    }
-  }
-  throw new AppError(
-    "CONFLICT",
-    "No room of this type is available for those dates. Try other dates or another room type.",
   );
 }
 
@@ -193,6 +61,11 @@ export async function cancelReservation(db: PrismaClient, ctx: Ctx, id: string, 
   authorize(ctx, "reservations.cancel");
   if (!reason.trim()) throw new AppError("VALIDATION", "A cancellation reason is required.");
   return transition(db, ctx, id, "CANCELLED", releaseRoom, reason);
+}
+
+export async function confirmReservation(db: PrismaClient, ctx: Ctx, id: string) {
+  authorize(ctx, "reservations.modify");
+  return transition(db, ctx, id, "CONFIRMED");
 }
 
 export async function markNoShow(db: PrismaClient, ctx: Ctx, id: string) {
@@ -299,3 +172,6 @@ export async function getReservation(db: PrismaClient, ctx: Ctx, id: string) {
     return r;
   });
 }
+
+export { createReservation } from "./booking";
+export { findFreeRooms };

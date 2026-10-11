@@ -5,7 +5,6 @@ const stamp = Date.now().toString(36);
 const email = `e2e-${stamp}@test.local`;
 const password = "e2e-password-123";
 
-const isoPlus = (days: number) => new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
 
 async function signIn(page: Page, code?: string) {
   await page.goto("/login");
@@ -64,18 +63,32 @@ test("owner registers, enrols MFA, runs a stay end to end, and it is audited", a
   await page.getByRole("button", { name: "Add", exact: true }).click();
   await expect(page.getByText("Asha Verma")).toBeVisible();
 
+  // Reservation: check availability and price first, then save (the guest is picked from the list).
+  const plus = (iso: string, n: number) => new Date(Date.parse(iso + "T00:00:00Z") + n * 86_400_000).toISOString().slice(0, 10);
   await page.goto("/app/reservations");
-  await page.getByLabel("Arrival").fill(isoPlus(0));
-  await page.getByLabel("Departure").fill(isoPlus(2));
-  await page.getByRole("button", { name: "Book" }).click();
+  const arrival = await page.getByLabel("Check-in").inputValue(); // defaults to today at the property
+  await page.getByLabel("Check-out").fill(plus(arrival, 2));
+  await page.getByRole("button", { name: "Check availability and price" }).click();
+  await expect(page.getByText("1 Deluxe room(s) available for 2 night(s).")).toBeVisible();
+  await expect(page.getByText("₹9,000.00").first()).toBeVisible();
+  await page.getByLabel("Existing guest").selectOption({ label: "Asha Verma" });
+  await page.getByLabel("Mobile number").fill("98765 43210");
+  await page.getByRole("button", { name: "Save booking" }).click();
+  await expect(page.getByRole("heading", { name: "Booking confirmation" })).toBeVisible();
+  await expect(page.getByText(/MK-[0-9A-F]{8}/).first()).toBeVisible();
+  await expect(page.getByText("Estimated total")).toBeVisible();
+  await page.goto("/app/reservations");
   await expect(page.getByRole("cell", { name: "Asha Verma" })).toBeVisible();
-  await expect(page.getByText(/MK-[0-9A-F]{8}/)).toBeVisible();
 
-  // A second booking for the only room on the same dates must be refused with a clear message.
-  await page.getByLabel("Arrival").fill(isoPlus(1));
-  await page.getByLabel("Departure").fill(isoPlus(3));
-  await page.getByRole("button", { name: "Book" }).click();
-  await expect(page.getByText(/No room of this type is available/)).toBeVisible();
+  // A second booking for the only room on overlapping dates is shown as unavailable before it can be saved.
+  await page.getByLabel("Check-in").fill(plus(arrival, 1));
+  await page.getByLabel("Check-out").fill(plus(arrival, 3));
+  await page.getByRole("button", { name: "Check availability and price" }).click();
+  await expect(page.getByText("No Deluxe room is available for those dates.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save booking" })).toHaveCount(0);
+  await page.setViewportSize({ width: 390, height: 800 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.setViewportSize({ width: 1280, height: 720 });
 
   // Front desk: check in, then out.
   await page.goto("/app/front-desk");

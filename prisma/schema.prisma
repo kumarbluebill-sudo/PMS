@@ -158,6 +158,9 @@ model Guest {
   companyName  String?
   gstin        String?
   gstStateCode String?
+  address      String?
+  idType       String?
+  idNumberEnc  String? // AES-GCM encrypted; shown masked
   createdAt DateTime @default(now())
 
   tenant       Tenant        @relation(fields: [tenantId], references: [id])
@@ -185,6 +188,14 @@ model Reservation {
   createdBy   String   @db.Uuid
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  // Booking details (multi-room bookings share a groupRef)
+  groupRef        String?
+  companyName     String?
+  agentName       String?
+  ratePlan        String  @default("STANDARD")
+  agreedRateMinor Int? // nightly rate when different from the room type base rate (discount applied)
+  discountReason  String?
+  quotedTotalMinor Int? // estimate shown at booking time; the folio is the source of truth
 
   property    Property @relation(fields: [propertyId], references: [id])
   guest       Guest    @relation(fields: [guestId], references: [id])
@@ -194,6 +205,7 @@ model Reservation {
 
   @@unique([tenantId, reference])
   @@index([tenantId, propertyId, arrival])
+  @@index([tenantId, groupRef])
   @@map("reservations")
 }
 

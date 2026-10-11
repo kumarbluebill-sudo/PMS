@@ -273,14 +273,16 @@ export async function postRoomNightsTx(tx: Tx, ctx: Ctx, reservationId: string) 
   const rt = await tx.roomType.findFirstOrThrow({ where: { id: r.roomTypeId } });
   const folio = await ensureFolio(tx, ctx, reservationId);
   if (folio.status !== "OPEN") return { posted: 0, folioId: folio.id };
-  if (rt.baseRateMinor <= 0) return { posted: 0, folioId: folio.id };
+  // A discounted booking carries its agreed nightly rate; otherwise the room type's base rate applies.
+  const rate = r.agreedRateMinor ?? rt.baseRateMinor;
+  if (rate <= 0) return { posted: 0, folioId: folio.id };
   let posted = 0;
   for (const night of stayNights(iso(r.arrival), iso(r.departure))) {
     const key = `room:${reservationId}:${night}`;
     const done = await tx.folioEntry.findFirst({ where: { tenantId: ctx.tenantId, idempotencyKey: key } });
     if (done) continue;
     await insertCharge(tx, ctx, folio, "CHARGE", {
-      category: "ROOM", description: `Room charge ${night}`, amountMinor: rt.baseRateMinor, taxInclusive: false,
+      category: "ROOM", description: `Room charge ${night}`, amountMinor: rate, taxInclusive: false,
       quantity: 1, serviceDate: night, idempotencyKey: key,
     });
     posted += 1;

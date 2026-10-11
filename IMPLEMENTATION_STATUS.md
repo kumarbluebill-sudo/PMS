@@ -1,6 +1,6 @@
 # Implementation Status
 
-Last updated: 2026-10-10. "Done" means verified by an automated test (Vitest 127 tests, Playwright 2 tests) or a recorded manual check.
+Last updated: 2026-10-10. "Done" means verified by an automated test (Vitest 151 tests, Playwright 2 tests) or a recorded manual check.
 
 ## Phase 1: Foundation + core PMS - done (see git history); known gaps
 Email has no real provider (`email_outbox`, dev only, holds live tokens); no MFA recovery codes; in-memory rate limiter; onboarding is a checklist; extra permissions are per-member, not named roles; no guest editing or multi-room bookings; Playwright not in CI.
@@ -38,11 +38,13 @@ Email has no real provider (`email_outbox`, dev only, holds live tokens); no MFA
 |---|---|---|
 | A. Room board dashboard: 10 cards from live data, every room listed, derived status (available / reserved / occupied / checkout due / cleaning / maintenance / out of order) with icon + label + legend, filters (date, floor, room type, status, search, arrival/checkout date), sort, table and grid views, quick actions, CSV export (permission-gated), stay detail page with extend / change room | Done | 11 integration tests (`dashboard.test.ts`), 6 unit tests (`roomStatus.test.ts`), e2e board row + mobile overflow |
 | B. Out-of-order / maintenance blocks: category, priority, reason, description (required for Other), dates, assignee, approval, resolution with note + readiness confirmation; room returns to "needs cleaning", never straight to sellable; dated blocks only remove the room for the dates covered; check-in refused into a blocked room; append-only room status history | Done | 14 integration tests (`roomblocks.test.ts`), 3 unit tests, e2e block / reason on board / resolve |
-| C. Simplified reservation form + server-side quote | Not started | |
+| C. Reservation form: check availability + price first (server-calculated nights, rate, discount, GST estimate, per-type availability), then save; new or existing guest, mobile required, 7 booking sources, tentative/confirmed, multi-room group bookings, specific room from the board, discount (permission + reason), optional advance payment on the folio, printable confirmation, atomic locking + DB exclusion constraint | Done | 19 integration tests (`booking.test.ts`), 5 unit tests, e2e flow incl. mobile overflow |
 | D. Guest feedback | Not started | |
 | E. Billing gaps (debit notes, PDF, categories, checkout exceptions) | Not started | |
 | F. Central settings hub | Not started | |
 | G. Cross-cutting tests / responsive checks | Not started | |
+
+Phase C notes: totals from the browser are ignored; the quote is recomputed on save. Rate plans do not exist yet (the only plan is the room type base rate; a discount stores an agreed nightly rate that the folio then uses). GST in the quote needs an approved rule for registered properties; otherwise the quote says it is unconfigured. If an advance cannot be recorded (e.g. cash with no open shift) the booking is kept and the failure is shown. Check-in in the past is refused for the new form; the legacy `createReservation` helper still allows it. ID numbers are stored encrypted; the PDF is the browser's print-to-PDF; email/WhatsApp delivery needs a provider.
 
 Phase B notes: photo attachments are not built (needs object storage). Blocks raised by a role without `rooms.approve` take effect immediately and are flagged for a different manager to approve. A guest in house prevents a block; overlapping bookings must be acknowledged and are recorded in the audit log, but they are not moved automatically.
 
