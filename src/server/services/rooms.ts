@@ -10,6 +10,9 @@ const roomTypeSchema = z.object({
   maxAdults: z.number().int().min(1).max(20).default(2),
   maxChildren: z.number().int().min(0).max(20).default(0),
   baseRateMinor: z.number().int().min(0).default(0),
+  baseOccupancy: z.number().int().min(1).max(20).default(2),
+  extraAdultRateMinor: z.number().int().min(0).default(0),
+  extraChildRateMinor: z.number().int().min(0).default(0),
 });
 
 export async function createRoomType(db: PrismaClient, ctx: Ctx, input: unknown) {

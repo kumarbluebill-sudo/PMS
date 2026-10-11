@@ -17,6 +17,7 @@ const NAV: { href: string; label: string; perm: Permission }[] = [
   { href: "/app/credit-notes", label: "Credit notes", perm: "billing.view" },
   { href: "/app/payments", label: "Payments", perm: "billing.view" },
   { href: "/app/cashier", label: "Cashier", perm: "cashier.operate" },
+  { href: "/app/invoices/gst-summary", label: "GST summary", perm: "accounting.view" },
   { href: "/app/accounting", label: "Accounting", perm: "accounting.view" },
   { href: "/app/rooms", label: "Rooms", perm: "rooms.view" },
   { href: "/app/room-types", label: "Room types", perm: "rooms.view" },

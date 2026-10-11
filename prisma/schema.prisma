@@ -113,6 +113,10 @@ model RoomType {
   maxAdults    Int    @default(2)
   maxChildren  Int    @default(0)
   baseRateMinor Int   @default(0) // integer minor units (paise)
+  /// Adults included in the base rate; each extra adult is charged per night.
+  baseOccupancy       Int @default(2)
+  extraAdultRateMinor Int @default(0)
+  extraChildRateMinor Int @default(0) // per child per night; 0 = children stay free
   createdAt    DateTime @default(now())
 
   property Property @relation(fields: [propertyId], references: [id])
@@ -474,6 +478,9 @@ model Folio {
   reservationId String   @db.Uuid
   guestId       String   @db.Uuid
   status        String   @default("OPEN")
+  /// GUEST is the default folio; COMPANY is a second folio billed to a company or agent.
+  label         String   @default("GUEST")
+  billTo        String?
   createdAt     DateTime @default(now())
 
   property    Property     @relation(fields: [propertyId], references: [id])
@@ -484,7 +491,7 @@ model Folio {
   refunds     Refund[]
   invoices    Invoice[]
 
-  @@unique([reservationId])
+  @@unique([reservationId, label])
   @@index([tenantId, propertyId])
   @@map("folios")
 }
@@ -497,6 +504,8 @@ model FolioEntry {
   folioId           String    @db.Uuid
   kind              String // CHARGE | DISCOUNT | REVERSAL | PAYMENT | REFUND
   category          String
+  /// Finer split inside a category for reporting (e.g. EXTRA_PERSON within ROOM). Tax is decided by `category`.
+  subCategory       String?
   description       String
   quantity          Int       @default(1)
   netMinor          Int       @default(0)

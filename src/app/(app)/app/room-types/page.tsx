@@ -16,6 +16,11 @@ export default async function RoomTypes({ searchParams }: PageProps<"/app/room-t
           <form action={addRoomTypeAction} className="space-y-3">
             <Field label="Name"><input name="name" required className={input} /></Field>
             <div className="grid grid-cols-3 gap-2">
+              <Field label="Base occupancy"><input name="baseOccupancy" type="number" min={1} defaultValue={2} className={input} /></Field>
+              <Field label="Extra adult (₹/night)"><input name="extraAdultRate" inputMode="decimal" className={input} /></Field>
+              <Field label="Extra child (₹/night)"><input name="extraChildRate" inputMode="decimal" className={input} /></Field>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
               <Field label="Max adults"><input name="maxAdults" type="number" min={1} defaultValue={2} className={input} /></Field>
               <Field label="Max children"><input name="maxChildren" type="number" min={0} defaultValue={0} className={input} /></Field>
               <Field label="Base rate (₹)"><input name="baseRate" type="number" min={0} step="0.01" className={input} /></Field>
@@ -28,7 +33,7 @@ export default async function RoomTypes({ searchParams }: PageProps<"/app/room-t
             <ul className="divide-y text-sm">
               {types.map((t) => (
                 <li key={t.id} className="flex justify-between py-2">
-                  <span>{t.name} <span className="text-slate-500">({t.maxAdults}A/{t.maxChildren}C)</span></span>
+                  <span>{t.name} <span className="text-slate-500">({t.maxAdults}A/{t.maxChildren}C)</span>{t.extraAdultRateMinor > 0 && <span className="block text-xs text-slate-500">Extra adult {inr(t.extraAdultRateMinor)} beyond {t.baseOccupancy}</span>}</span>
                   <span>{inr(t.baseRateMinor)}</span>
                 </li>
               ))}

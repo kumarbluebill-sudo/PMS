@@ -4,6 +4,8 @@ import { authorize, requireProperty, type Ctx } from "@/server/auth/context";
 import { withTenant } from "@/server/db/withTenant";
 import { AppError } from "@/server/errors";
 import { calculateTax, TaxEngineError, type TaxResult, type TaxRuleInput } from "@/server/domain/gst";
+import { extraPersonPerNight, summarizeFolio } from "@/server/domain/folio";
+import { dateInZone } from "@/server/domain/roomStatus";
 import { stayNights } from "@/server/domain/stay";
 import { audit } from "./audit";
 
@@ -24,6 +26,7 @@ export const ACCOUNT = {
   BANK: "1020",
   CLEARING: "1030", // UPI / card / other electronic receipts awaiting settlement
   RECEIVABLE: "1100", // guest folios (a credit balance here represents guest advances)
+  COMPANY: "1110", // amounts a company has agreed to pay (company credit)
   CGST: "2100",
   SGST: "2110",
   IGST: "2120",
@@ -40,6 +43,7 @@ const DEFAULT_ACCOUNTS: [string, string, string][] = [
   [ACCOUNT.BANK, "Bank", "ASSET"],
   [ACCOUNT.CLEARING, "UPI / card clearing", "ASSET"],
   [ACCOUNT.RECEIVABLE, "Guest receivables", "ASSET"],
+  [ACCOUNT.COMPANY, "Company credit receivables", "ASSET"],
   [ACCOUNT.CGST, "Output CGST payable", "LIABILITY"],
   [ACCOUNT.SGST, "Output SGST payable", "LIABILITY"],
   [ACCOUNT.IGST, "Output IGST payable", "LIABILITY"],
@@ -51,12 +55,12 @@ const DEFAULT_ACCOUNTS: [string, string, string][] = [
   [ACCOUNT.REV_OTHER, "Other service revenue", "REVENUE"],
 ];
 
-const revenueAccount = (category: string) =>
+export const revenueAccount = (category: string) =>
   ({ ROOM: ACCOUNT.REV_ROOM, FNB: ACCOUNT.REV_FNB, SPA: ACCOUNT.REV_SPA, BANQUET: ACCOUNT.REV_BANQUET }[category] ??
     ACCOUNT.REV_OTHER);
 
 export const paymentAccount = (method: string) =>
-  method === "CASH" ? ACCOUNT.CASH : method === "BANK_TRANSFER" ? ACCOUNT.BANK : ACCOUNT.CLEARING;
+  method === "CASH" ? ACCOUNT.CASH : method === "BANK_TRANSFER" ? ACCOUNT.BANK : method === "COMPANY_CREDIT" ? ACCOUNT.COMPANY : ACCOUNT.CLEARING;
 
 async function accountIds(tx: Tx, tenantId: string): Promise<Map<string, string>> {
   let rows = await tx.account.findMany({ where: { tenantId } });
@@ -99,7 +103,7 @@ export async function postJournal(
 }
 
 /** Journal lines for a (signed) charge: positive = Dr receivable / Cr revenue + tax; negative flips every side. */
-function chargeJournal(category: string, detail: TaxResult["detail"], net: number, gross: number): JournalSpec {
+export function chargeJournal(category: string, detail: TaxResult["detail"], net: number, gross: number): JournalSpec {
   const flip = gross < 0;
   const side = (code: string, amt: number, normalIsCredit: boolean) => {
     const a = Math.abs(amt);
@@ -154,13 +158,13 @@ async function computeTax(
 
 // ---------- folios ----------
 
-export async function ensureFolio(tx: Tx, ctx: Ctx, reservationId: string) {
+export async function ensureFolio(tx: Tx, ctx: Ctx, reservationId: string, label: "GUEST" | "COMPANY" = "GUEST", billTo?: string) {
   const r = await tx.reservation.findFirst({ where: { id: reservationId, propertyId: ctx.propertyId ?? undefined } });
   if (!r) throw new AppError("NOT_FOUND", "Reservation not found.");
-  const existing = await tx.folio.findUnique({ where: { reservationId } });
+  const existing = await tx.folio.findUnique({ where: { reservationId_label: { reservationId, label } } });
   if (existing) return existing;
   return tx.folio.create({
-    data: { tenantId: ctx.tenantId, propertyId: r.propertyId, reservationId, guestId: r.guestId },
+    data: { tenantId: ctx.tenantId, propertyId: r.propertyId, reservationId, guestId: r.guestId, label, billTo },
   });
 }
 
@@ -187,7 +191,7 @@ const chargeSchema = z.object({
   idempotencyKey: z.string().min(8).max(100).optional(),
 });
 
-async function insertCharge(
+export async function insertCharge(
   tx: Tx,
   ctx: Ctx,
   folio: { id: string; propertyId: string; guestId: string },
@@ -195,6 +199,7 @@ async function insertCharge(
   d: z.infer<typeof chargeSchema>,
   reason?: string,
   unitTariffOverride?: number,
+  subCategory?: string,
 ) {
   const date = d.serviceDate ?? iso(new Date());
   const signed = kind === "DISCOUNT" ? -d.amountMinor : d.amountMinor;
@@ -205,7 +210,7 @@ async function insertCharge(
   });
   const entry = await tx.folioEntry.create({
     data: {
-      tenantId: ctx.tenantId, propertyId: folio.propertyId, folioId: folio.id, kind, category: d.category,
+      tenantId: ctx.tenantId, propertyId: folio.propertyId, folioId: folio.id, kind, category: d.category, subCategory,
       description: d.description, quantity: d.quantity, netMinor: tax.netMinor, taxMinor: tax.taxMinor,
       balanceDeltaMinor: tax.grossMinor, taxInclusive: d.taxInclusive, taxDetail: tax.detail,
       taxRuleId: tax.detail.ruleId, serviceDate: new Date(`${date}T00:00:00.000Z`), reason,
@@ -229,6 +234,17 @@ export async function postCharge(db: PrismaClient, ctx: Ctx, folioId: string, in
     if (d.idempotencyKey) {
       const dup = await tx.folioEntry.findFirst({ where: { tenantId: ctx.tenantId, idempotencyKey: d.idempotencyKey } });
       if (dup) return dup;
+    }
+    if (d.serviceDate) {
+      // The posting date must fall within the stay and not be in the future.
+      const [res, prop] = await Promise.all([
+        tx.reservation.findUniqueOrThrow({ where: { id: folio.reservationId }, select: { arrival: true } }),
+        tx.property.findUniqueOrThrow({ where: { id: folio.propertyId }, select: { timezone: true } }),
+      ]);
+      const today = dateInZone(new Date(), prop.timezone);
+      if (d.serviceDate < iso(res.arrival) || d.serviceDate > today) {
+        throw new AppError("VALIDATION", "The posting date must be between check-in and today.");
+      }
     }
     const entry = await insertCharge(tx, ctx, folio, "CHARGE", d);
     await audit(tx, ctx, {
@@ -267,7 +283,10 @@ export async function postDiscount(db: PrismaClient, ctx: Ctx, folioId: string, 
   });
 }
 
-/** Posts one charge per night not yet posted (idempotent per reservation night). Runs inside the caller's transaction. */
+/**
+ * Posts one room charge per night not yet posted (idempotent per reservation night), plus an extra-person charge
+ * for guests beyond the room type's base occupancy. Runs inside the caller's transaction.
+ */
 export async function postRoomNightsTx(tx: Tx, ctx: Ctx, reservationId: string) {
   const r = await tx.reservation.findFirstOrThrow({ where: { id: reservationId } });
   const rt = await tx.roomType.findFirstOrThrow({ where: { id: r.roomTypeId } });
@@ -276,16 +295,27 @@ export async function postRoomNightsTx(tx: Tx, ctx: Ctx, reservationId: string) 
   // A discounted booking carries its agreed nightly rate; otherwise the room type's base rate applies.
   const rate = r.agreedRateMinor ?? rt.baseRateMinor;
   if (rate <= 0) return { posted: 0, folioId: folio.id };
+  const extra = extraPersonPerNight({ adults: r.adults, children: r.children, ...rt });
+  // The tax band is chosen from the whole nightly tariff, so both lines are banded on rate + extras.
+  const tariff = rate + extra;
   let posted = 0;
   for (const night of stayNights(iso(r.arrival), iso(r.departure))) {
     const key = `room:${reservationId}:${night}`;
-    const done = await tx.folioEntry.findFirst({ where: { tenantId: ctx.tenantId, idempotencyKey: key } });
-    if (done) continue;
-    await insertCharge(tx, ctx, folio, "CHARGE", {
-      category: "ROOM", description: `Room charge ${night}`, amountMinor: rate, taxInclusive: false,
-      quantity: 1, serviceDate: night, idempotencyKey: key,
-    });
-    posted += 1;
+    if (!(await tx.folioEntry.findFirst({ where: { tenantId: ctx.tenantId, idempotencyKey: key } }))) {
+      await insertCharge(tx, ctx, folio, "CHARGE", {
+        category: "ROOM", description: `Room charge ${night}`, amountMinor: rate, taxInclusive: false,
+        quantity: 1, serviceDate: night, idempotencyKey: key,
+      }, undefined, tariff);
+      posted += 1;
+    }
+    const extraKey = `extra:${reservationId}:${night}`;
+    if (extra > 0 && !(await tx.folioEntry.findFirst({ where: { tenantId: ctx.tenantId, idempotencyKey: extraKey } }))) {
+      await insertCharge(tx, ctx, folio, "CHARGE", {
+        category: "ROOM", description: `Extra person charge ${night}`, amountMinor: extra, taxInclusive: false,
+        quantity: 1, serviceDate: night, idempotencyKey: extraKey,
+      }, undefined, tariff, "EXTRA_PERSON");
+      posted += 1;
+    }
   }
   return { posted, folioId: folio.id };
 }
@@ -330,8 +360,56 @@ export async function folioDetail(db: PrismaClient, ctx: Ctx, folioId: string) {
       : billed > 0 && paid === 0 ? "UNPAID"
       : balance > 0 ? "PARTIALLY_PAID"
       : paid > 0 ? "PAID" : "UNPAID";
-    return { folio, balance, paid, refunded, billed, paymentStatus };
+    const checkedIn = await tx.reservationStatusHistory.findFirst({
+      where: { reservationId: folio.reservationId, toStatus: "CHECKED_IN" }, orderBy: { changedAt: "asc" }, select: { changedAt: true },
+    });
+    const summary = summarizeFolio(folio.entries, checkedIn?.changedAt ?? null);
+    const siblings = await tx.folio.findMany({
+      where: { reservationId: folio.reservationId, id: { not: folio.id } }, select: { id: true, label: true, billTo: true },
+    });
+    return { folio, balance, paid, refunded, billed, paymentStatus, summary, siblings };
   });
+}
+
+/**
+ * Reverses one ledger entry (a REVERSAL entry with the opposite sign plus its journal entry). Used by credit notes
+ * and by folio transfers. The original entry is never touched.
+ */
+export async function reverseEntryTx(
+  tx: Tx,
+  ctx: Ctx,
+  o: Prisma.FolioEntryGetPayload<object>,
+  opts: { description: string; reason: string; date: string },
+) {
+  const d = o.taxDetail as unknown as TaxResult["detail"] | null;
+  const neg = d ? { ...d, cgstMinor: -d.cgstMinor, sgstMinor: -d.sgstMinor, igstMinor: -d.igstMinor, cessMinor: -d.cessMinor } : null;
+  const rev = await tx.folioEntry.create({
+    data: {
+      tenantId: ctx.tenantId, propertyId: o.propertyId, folioId: o.folioId, kind: "REVERSAL", category: o.category,
+      subCategory: o.subCategory, description: opts.description, quantity: o.quantity, netMinor: -o.netMinor,
+      taxMinor: -o.taxMinor, balanceDeltaMinor: -o.balanceDeltaMinor, taxInclusive: o.taxInclusive,
+      taxDetail: neg as unknown as Prisma.InputJsonValue, taxRuleId: o.taxRuleId, serviceDate: o.serviceDate,
+      reversesEntryId: o.id, reason: opts.reason, postedBy: ctx.userId,
+    },
+  });
+  // `normalIsCredit` describes the ORIGINAL posting side. A reversal posts the opposite side; reversing a discount swaps it back.
+  const flip = o.balanceDeltaMinor < 0;
+  const side = (code: string, amt: number, normalIsCredit: boolean) => {
+    const a = Math.abs(amt);
+    return normalIsCredit === flip ? { code, credit: a } : { code, debit: a };
+  };
+  await postJournal(tx, ctx, {
+    date: opts.date, memo: opts.description.slice(0, 120), sourceType: "FOLIO_ENTRY", sourceId: rev.id,
+    lines: [
+      side(ACCOUNT.RECEIVABLE, o.balanceDeltaMinor, false),
+      side(revenueAccount(o.category), o.netMinor, true),
+      side(ACCOUNT.CGST, d?.cgstMinor ?? 0, true),
+      side(ACCOUNT.SGST, d?.sgstMinor ?? 0, true),
+      side(ACCOUNT.IGST, d?.igstMinor ?? 0, true),
+      side(ACCOUNT.CESS, d?.cessMinor ?? 0, true),
+    ],
+  });
+  return rev;
 }
 
 export async function listFolios(db: PrismaClient, ctx: Ctx) {

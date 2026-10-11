@@ -6,7 +6,9 @@ import { AppError } from "@/server/errors";
 import { audit } from "./audit";
 import { ACCOUNT, lockFolio, MAX_AMOUNT_MINOR, paymentAccount, postJournal } from "./billing";
 
-export const METHODS = ["CASH", "UPI", "CARD", "BANK_TRANSFER", "OTHER"] as const;
+export const METHODS = ["CASH", "UPI", "CARD", "BANK_TRANSFER", "COMPANY_CREDIT", "OTHER"] as const;
+/** Company credit is a promise by a company to pay later; it is settled by a bank/cash receipt, never refunded as such. */
+export const REFUND_METHODS = METHODS.filter((m) => m !== "COMPANY_CREDIT") as unknown as readonly ["CASH", "UPI", "CARD", "BANK_TRANSFER", "OTHER"];
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 
 async function openShiftFor(tx: Parameters<Parameters<typeof withTenant>[2]>[0], ctx: Ctx) {
@@ -29,6 +31,11 @@ export async function recordPayment(db: PrismaClient, ctx: Ctx, folioId: string,
   authorize(ctx, "payments.record");
   requireProperty(ctx);
   const d = paymentSchema.parse(input);
+  if (d.method === "COMPANY_CREDIT") {
+    // Putting a guest's bill on a company's account is a manager decision, with the company named.
+    authorize(ctx, "billing.waive");
+    if ((d.reference?.length ?? 0) < 2) throw new AppError("VALIDATION", "Name the company or agent that will pay (enter it as the reference).");
+  }
   return withTenant(db, ctx.tenantId, async (tx) => {
     // Lock first so concurrent deliveries of the same key serialise instead of racing.
     const folio = await lockFolio(tx, ctx, folioId);
@@ -83,12 +90,12 @@ export async function refundPayment(
   db: PrismaClient,
   ctx: Ctx,
   folioId: string,
-  input: { method: (typeof METHODS)[number]; amountMinor: number; reason: string },
+  input: { method: (typeof REFUND_METHODS)[number]; amountMinor: number; reason: string },
 ) {
   authorize(ctx, "payments.refund");
   requireProperty(ctx);
   const d = z
-    .object({ method: z.enum(METHODS), amountMinor: z.number().int().positive().max(MAX_AMOUNT_MINOR), reason: z.string().trim().min(3).max(300) })
+    .object({ method: z.enum(REFUND_METHODS), amountMinor: z.number().int().positive().max(MAX_AMOUNT_MINOR), reason: z.string().trim().min(3).max(300) })
     .parse(input);
   return withTenant(db, ctx.tenantId, async (tx) => {
     const folio = await lockFolio(tx, ctx, folioId);
@@ -222,4 +229,24 @@ export async function listPayments(db: PrismaClient, ctx: Ctx) {
       include: { folio: { include: { reservation: { include: { guest: { select: { name: true } } } } } } },
     }),
   );
+}
+
+/** Everything a printed payment receipt needs. */
+export async function getPaymentReceipt(db: PrismaClient, ctx: Ctx, paymentId: string) {
+  authorize(ctx, "billing.view");
+  const propertyId = requireProperty(ctx);
+  const r = await withTenant(db, ctx.tenantId, async (tx) => {
+    const payment = await tx.payment.findFirst({
+      where: { id: paymentId, propertyId },
+      include: { folio: { include: { reservation: { include: { guest: { select: { name: true, phone: true } } } } } } },
+    });
+    if (!payment) throw new AppError("NOT_FOUND", "Payment not found.");
+    const property = await tx.property.findFirstOrThrow({ where: { id: propertyId } });
+    // Balance as at this payment: every ledger entry up to and including the payment's own entry.
+    const own = await tx.folioEntry.findFirst({ where: { paymentId: payment.id }, select: { postedAt: true } });
+    const balance = (await tx.folioEntry.aggregate({ where: { folioId: payment.folioId, postedAt: { lte: own?.postedAt ?? payment.receivedAt } }, _sum: { balanceDeltaMinor: true } }))._sum.balanceDeltaMinor ?? 0;
+    return { payment, property, balanceAfterMinor: balance };
+  });
+  const user = await db.user.findFirst({ where: { id: r.payment.receivedBy, memberships: { some: { tenantId: ctx.tenantId } } }, select: { name: true } });
+  return { ...r, receivedByName: user?.name ?? "Staff" };
 }

@@ -127,10 +127,20 @@ test("owner registers, enrols MFA, runs a stay end to end, and it is audited", a
   await expect(page.getByRole("heading", { name: "Bill of Supply" })).toBeVisible();
   await expect(page.getByText(/INVB\/\d{4}\/000001/).first()).toBeVisible();
   await expect(page.getByText("No GST has been charged on this document.")).toBeVisible();
+  // The same document downloads as a real PDF.
+  const pdfHref = await page.getByRole("link", { name: "Download PDF" }).getAttribute("href");
+  const pdf = await page.request.get(pdfHref!);
+  expect(pdf.headers()["content-type"]).toBe("application/pdf");
+  expect((await pdf.body()).subarray(0, 5).toString()).toBe("%PDF-");
 
-  // Now check-out succeeds.
+  // Check-out through the settlement page: balance is clear and the invoice is already issued.
   await page.goto("/app/front-desk");
-  await page.getByRole("button", { name: "Check out" }).click();
+  await page.getByRole("link", { name: "Settle & check out" }).first().click();
+  await expect(page.getByRole("heading", { name: "Check-out: Asha Verma" })).toBeVisible();
+  await expect(page.getByText("Balance due").first()).toBeVisible();
+  await page.getByRole("button", { name: "Complete check-out" }).click();
+  await expect(page).toHaveURL(/\/app\/dashboard/);
+  await page.goto("/app/front-desk");
   await expect(page.getByText("In house (0)")).toBeVisible();
 
   // Housekeeping shows the room dirty after checkout.

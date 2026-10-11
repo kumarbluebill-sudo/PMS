@@ -27,8 +27,8 @@
 Per line, per component, half-up to the paisa. Inclusive prices keep gross fixed. No invoice-level round-off. Confirm this matches your accountant's practice.
 
 ## Not implemented / needs professional input
-- **PDF generation**: invoices render as a printable web page ("Print / save as PDF"); there is no server-generated PDF yet.
-- **Debit notes**, advance receipts (receipt vouchers) and GST on advances, reverse charge, e-invoicing (IRN/QR), e-way bills, GSTR-1/3B exports, HSN/SAC summary report, composition scheme, TCS/TDS, and the time limits for issuing credit notes are not implemented.
+- **PDF**: every issued document can be downloaded as a server-generated PDF built from the saved invoice data. The layout has not been checked by a GST professional.
+- **Debit notes** are issued as new folio charges numbered in their own series (`PFXD`) against an invoice; their tax is determined by the rules in force on the original invoice date. Whether that matches the law for a given revision, and the time limits, must be confirmed by a professional. Not implemented: advance receipts (receipt vouchers) and GST on advances, reverse charge, e-invoicing (IRN/QR), e-way bills, GSTR-1/3B returns (a SAC/rate summary and invoice register CSV are provided as accountant aids), composition scheme, TCS/TDS, and the time limits for issuing credit notes are not implemented.
 - **Rate decisions** (e.g. which room-tariff band or restaurant treatment applies, whether input tax credit is allowed) are entirely the user's configuration; the software does not advise.
 - Place-of-supply logic is limited to the two options above.
 - Invoice dates use the property's timezone date; the financial year is derived from it.

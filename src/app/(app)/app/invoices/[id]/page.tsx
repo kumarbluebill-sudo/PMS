@@ -1,10 +1,12 @@
-import { creditNoteAction } from "@/app/billing-actions";
+import Link from "next/link";
+import { creditNoteAction, debitNoteAction } from "@/app/billing-actions";
 import { btn, ErrorBanner, Field, input } from "@/app/ui";
 import { roleHasPermission } from "@/server/auth/permissions";
 import { getDb } from "@/server/db/client";
 import { GST_STATES } from "@/server/domain/gst";
 import { formatInr } from "@/server/money";
 import { getCtx } from "@/server/session";
+import { CATEGORIES } from "@/server/services/billing";
 import { getInvoice } from "@/server/services/invoicing";
 import { PrintButton } from "../../PrintButton";
 
@@ -22,7 +24,7 @@ export default async function InvoicePage({ params, searchParams }: PageProps<"/
   const cols = inv.kind === "TAX_INVOICE" || inv.kind === "CREDIT_NOTE";
   return (
     <div className="mx-auto max-w-3xl">
-      <div className="mb-3 flex items-center justify-between print:hidden"><ErrorBanner message={typeof error === "string" ? error : undefined} /><PrintButton /></div>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 print:hidden"><ErrorBanner message={typeof error === "string" ? error : undefined} /><span className="flex items-center gap-2"><Link className="inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50" href={`/app/invoices/${inv.id}/pdf`}>Download PDF</Link><PrintButton /></span></div>
       <article className="rounded-lg border border-slate-200 bg-white p-6 text-sm shadow-sm print:border-0 print:shadow-none">
         <header className="flex flex-wrap justify-between gap-4">
           <div>
@@ -78,6 +80,22 @@ export default async function InvoicePage({ params, searchParams }: PageProps<"/
           </fieldset>
           <Field label="Reason"><input name="reason" required className={input} /></Field>
           <button className={btn}>Issue credit note</button>
+        </form>
+      )}
+      {canCredit && (
+        <form action={debitNoteAction} className="mt-4 space-y-3 rounded-lg border border-slate-200 bg-white p-4 print:hidden">
+          <h2 className="text-sm font-semibold">Issue a debit note (add an omitted or under-charged item)</h2>
+          <input type="hidden" name="invoiceId" value={inv.id} />
+          <div className="grid gap-2 sm:grid-cols-4">
+            <Field label="Category"><select name="category" className={input}>{CATEGORIES.map((c) => <option key={c} value={c}>{c.replaceAll("_", " ").toLowerCase()}</option>)}</select></Field>
+            <Field label="Rate per unit (₹)"><input name="amount" required inputMode="decimal" className={input} /></Field>
+            <Field label="Quantity"><input name="quantity" type="number" min={1} defaultValue={1} className={input} /></Field>
+            <label className="flex items-end gap-2 pb-2 text-sm"><input type="checkbox" name="taxInclusive" /> Includes GST</label>
+          </div>
+          <Field label="Item description"><input name="description" required className={input} /></Field>
+          <Field label="Reason"><input name="reason" required className={input} /></Field>
+          <p className="text-xs text-slate-500">GST is worked out from the rules in force on the original invoice date. A debit note adds to the folio balance.</p>
+          <button className={btn}>Issue debit note</button>
         </form>
       )}
     </div>

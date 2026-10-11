@@ -226,7 +226,7 @@ export async function roomBoard(db: PrismaClient, ctx: Ctx, input: BoardFilter =
     if (canBilling) {
       const inHouseRes = assignments.filter((a) => a.reservation.status === "CHECKED_IN" && scopeIds.has(a.roomId)).map((a) => a.reservationId);
       const shown = rows.map((r) => r.stay?.reservationId).filter((x): x is string => !!x);
-      const folios = await tx.folio.findMany({ where: { propertyId, reservationId: { in: [...new Set([...inHouseRes, ...shown])] } }, select: { id: true, reservationId: true } });
+      const folios = await tx.folio.findMany({ where: { propertyId, label: "GUEST", reservationId: { in: [...new Set([...inHouseRes, ...shown])] } }, select: { id: true, reservationId: true } });
       const sums = await tx.folioEntry.groupBy({ by: ["folioId", "kind"], where: { folioId: { in: folios.map((x) => x.id) } }, _sum: { balanceDeltaMinor: true } });
       const fByRes = new Map(folios.map((x) => [x.reservationId, x.id]));
       const figures = (folioId: string) => {

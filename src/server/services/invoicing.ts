@@ -5,8 +5,7 @@ import { withTenant } from "@/server/db/withTenant";
 import { AppError } from "@/server/errors";
 import { financialYear, GST_STATES, validateGstin, type TaxDetail } from "@/server/domain/gst";
 import { audit } from "./audit";
-import { lockFolio, postJournal } from "./billing";
-import { ACCOUNT } from "./billing";
+import { CATEGORIES, insertCharge, lockFolio, MAX_AMOUNT_MINOR, reverseEntryTx } from "./billing";
 
 type Tx = Prisma.TransactionClient;
 const iso = (d: Date) => d.toISOString().slice(0, 10);
@@ -27,8 +26,17 @@ const recipientSchema = z
 
 type Recipient = { name: string; gstin?: string; stateCode?: string; address?: string };
 
-function resolveRecipient(guest: { name: string; companyName: string | null; gstin: string | null; gstStateCode: string | null }, override?: Recipient): Recipient {
-  const r: Recipient = override ?? { name: guest.companyName ?? guest.name, gstin: guest.gstin ?? undefined, stateCode: guest.gstStateCode ?? undefined };
+function resolveRecipient(
+  guest: { name: string; companyName: string | null; gstin: string | null; gstStateCode: string | null },
+  override?: Recipient,
+  billTo?: string | null,
+): Recipient {
+  // A company folio is billed to the company; the guest's own GSTIN is used only if it is that company's.
+  const sameCompany = !!billTo && guest.companyName?.trim().toLowerCase() === billTo.trim().toLowerCase();
+  const r: Recipient = override ??
+    (billTo
+      ? { name: billTo, gstin: sameCompany ? guest.gstin ?? undefined : undefined, stateCode: sameCompany ? guest.gstStateCode ?? undefined : undefined }
+      : { name: guest.companyName ?? guest.name, gstin: guest.gstin ?? undefined, stateCode: guest.gstStateCode ?? undefined });
   if (r.gstin) {
     const v = validateGstin(r.gstin);
     if (!v.ok) throw new AppError("VALIDATION", `Recipient ${v.reason}`);
@@ -68,10 +76,13 @@ type PendingLine = {
 };
 
 async function pendingEntries(tx: Tx, folioId: string, entryIds?: string[]) {
+  // A charge that has been moved to another folio is reversed and must not be invoiced here.
+  const reversed = (await tx.folioEntry.findMany({ where: { folioId, reversesEntryId: { not: null } }, select: { reversesEntryId: true } }))
+    .map((r) => r.reversesEntryId!);
   const entries = await tx.folioEntry.findMany({
     where: {
-      folioId, kind: { in: ["CHARGE", "DISCOUNT"] }, line: null,
-      ...(entryIds ? { id: { in: entryIds } } : {}),
+      folioId, kind: { in: ["CHARGE", "DISCOUNT"] }, line: null, id: { notIn: reversed },
+      ...(entryIds ? { AND: [{ id: { in: entryIds } }] } : {}),
     },
     orderBy: { postedAt: "asc" },
   });
@@ -108,7 +119,7 @@ export async function previewInvoice(db: PrismaClient, ctx: Ctx, folioId: string
     if (!folio) throw new AppError("NOT_FOUND", "Folio not found.");
     const { snapshot } = await supplierSnapshot(tx, folio.propertyId);
     const entries = await pendingEntries(tx, folioId, input.entryIds);
-    const recipient = resolveRecipient(folio.reservation.guest, recipientIn);
+    const recipient = resolveRecipient(folio.reservation.guest, recipientIn, folio.label === "COMPANY" ? folio.billTo : null);
     const totals = entries.reduce(addTotals, ZERO);
     return { kind: documentKind(snapshot.registered, entries), supplier: snapshot, recipient, lines: toLines(entries), totals };
   });
@@ -139,7 +150,7 @@ export async function issueInvoice(db: PrismaClient, ctx: Ctx, folioId: string, 
       const folio = await tx.folio.findUniqueOrThrow({ where: { id: folio0.id }, include: { reservation: { include: { guest: true } } } });
       const { property, snapshot } = await supplierSnapshot(tx, folio.propertyId);
       const entries = await pendingEntries(tx, folioId, input.entryIds);
-      const recipient = resolveRecipient(folio.reservation.guest, recipientIn);
+      const recipient = resolveRecipient(folio.reservation.guest, recipientIn, folio.label === "COMPANY" ? folio.billTo : null);
       const kind = documentKind(snapshot.registered, entries);
       const totals = entries.reduce(addTotals, ZERO);
       if (totals.gross < 0) throw new AppError("VALIDATION", "An invoice cannot have a negative total.");
@@ -210,41 +221,8 @@ export async function issueCreditNote(db: PrismaClient, ctx: Ctx, invoiceId: str
 
       const reversals: { line: (typeof lines)[number]; id: string }[] = [];
       for (const l of lines) {
-        const o = l.entry;
-        const d = o.taxDetail as unknown as TaxDetail | null;
-        const neg = d
-          ? { ...d, cgstMinor: -d.cgstMinor, sgstMinor: -d.sgstMinor, igstMinor: -d.igstMinor, cessMinor: -d.cessMinor }
-          : null;
-        const rev = await tx.folioEntry.create({
-          data: {
-            tenantId: ctx.tenantId, propertyId: o.propertyId, folioId: o.folioId, kind: "REVERSAL", category: o.category,
-            description: `Credit note ${number}: ${o.description}`, quantity: o.quantity, netMinor: -o.netMinor,
-            taxMinor: -o.taxMinor, balanceDeltaMinor: -o.balanceDeltaMinor, taxInclusive: o.taxInclusive,
-            taxDetail: neg as unknown as Prisma.InputJsonValue, taxRuleId: o.taxRuleId, serviceDate: o.serviceDate,
-            reversesEntryId: o.id, reason, postedBy: ctx.userId,
-          },
-        });
+        const rev = await reverseEntryTx(tx, ctx, l.entry, { description: `Credit note ${number}: ${l.entry.description}`, reason, date });
         reversals.push({ line: l, id: rev.id });
-        const flip = o.balanceDeltaMinor < 0; // reversing a discount re-debits revenue
-        // `normalIsCredit` describes the ORIGINAL posting side. A reversal posts the opposite side;
-        // reversing a discount (flip) swaps it back.
-        const side = (code: string, amt: number, normalIsCredit: boolean) => {
-          const a = Math.abs(amt);
-          const credit = normalIsCredit === flip;
-          return credit ? { code, credit: a } : { code, debit: a };
-        };
-        const rc = o.category === "ROOM" ? ACCOUNT.REV_ROOM : o.category === "FNB" ? ACCOUNT.REV_FNB : o.category === "SPA" ? ACCOUNT.REV_SPA : o.category === "BANQUET" ? ACCOUNT.REV_BANQUET : ACCOUNT.REV_OTHER;
-        await postJournal(tx, ctx, {
-          date, memo: `Credit note ${number}`, sourceType: "FOLIO_ENTRY", sourceId: rev.id,
-          lines: [
-            side(ACCOUNT.RECEIVABLE, o.balanceDeltaMinor, false),
-            side(rc, o.netMinor, true),
-            side(ACCOUNT.CGST, d?.cgstMinor ?? 0, true),
-            side(ACCOUNT.SGST, d?.sgstMinor ?? 0, true),
-            side(ACCOUNT.IGST, d?.igstMinor ?? 0, true),
-            side(ACCOUNT.CESS, d?.cessMinor ?? 0, true),
-          ],
-        });
       }
       const tot = lines.reduce(
         (t, l) => ({
@@ -280,6 +258,65 @@ export async function issueCreditNote(db: PrismaClient, ctx: Ctx, invoiceId: str
     }
     throw e;
   }
+}
+
+const debitLineSchema = z.object({
+  category: z.enum(CATEGORIES),
+  description: z.string().trim().min(2).max(200),
+  amountMinor: z.number().int().positive().max(MAX_AMOUNT_MINOR),
+  taxInclusive: z.boolean().default(false),
+  quantity: z.number().int().min(1).max(10000).default(1),
+});
+
+/**
+ * Debit note: an upward revision of an issued invoice (an omitted or under-charged item). The extra amount is posted
+ * to the same folio with tax worked out from the rules in force on the ORIGINAL invoice date, then numbered in its
+ * own series. The original invoice is never changed.
+ */
+export async function issueDebitNote(db: PrismaClient, ctx: Ctx, invoiceId: string, input: { reason: string; lines: unknown[] }) {
+  authorize(ctx, "creditnotes.issue");
+  requireProperty(ctx);
+  const reason = z.string().trim().min(3, "Give a reason for the debit note.").max(300).parse(input.reason);
+  const lines = z.array(debitLineSchema).min(1, "Add at least one line.").max(20).parse(input.lines);
+  return withTenant(db, ctx.tenantId, async (tx) => {
+    const orig = await tx.invoice.findFirst({ where: { id: invoiceId, propertyId: ctx.propertyId! } });
+    if (!orig) throw new AppError("NOT_FOUND", "Invoice not found.");
+    if (orig.kind !== "TAX_INVOICE" && orig.kind !== "BILL_OF_SUPPLY") throw new AppError("CONFLICT", "Debit notes can only be raised against invoices.");
+    const folio = await lockFolio(tx, ctx, orig.folioId);
+    if (folio.status !== "OPEN") throw new AppError("CONFLICT", "This folio is closed.");
+    const property = await tx.property.findUniqueOrThrow({ where: { id: orig.propertyId } });
+    const date = todayIn(property.timezone);
+    const fy = financialYear(date);
+    const series = seriesFor(property.invoicePrefix, "DEBIT_NOTE");
+    const { seq, number } = await nextNumber(tx, ctx, property.id, series, fy);
+    const serviceDate = iso(orig.issuedAt);
+    const entries = [];
+    for (const l of lines) {
+      entries.push(await insertCharge(tx, ctx, folio, "CHARGE", { ...l, serviceDate }, `Debit note ${number}: ${reason}`));
+    }
+    const pending = toLines(entries);
+    const tot = entries.reduce(addTotals, ZERO);
+    const dn = await tx.invoice.create({
+      data: {
+        tenantId: ctx.tenantId, propertyId: orig.propertyId, folioId: orig.folioId, kind: "DEBIT_NOTE", series, financialYear: fy,
+        seq, number, originalInvoiceId: orig.id, supplier: orig.supplier as Prisma.InputJsonValue, recipient: orig.recipient as Prisma.InputJsonValue,
+        placeOfSupply: orig.placeOfSupply, netMinor: tot.net, cgstMinor: tot.cgst, sgstMinor: tot.sgst, igstMinor: tot.igst,
+        cessMinor: tot.cess, grossMinor: tot.gross, reason, issuedBy: ctx.userId,
+        lines: {
+          create: pending.map((l) => ({
+            tenantId: ctx.tenantId, folioEntryId: l.entryId, description: l.description, sacCode: l.sacCode, quantity: l.quantity,
+            netMinor: l.netMinor, cgstMinor: l.cgstMinor, sgstMinor: l.sgstMinor, igstMinor: l.igstMinor, cessMinor: l.cessMinor,
+            grossMinor: l.grossMinor, taxDetail: l.taxDetail as Prisma.InputJsonValue,
+          })),
+        },
+      },
+    });
+    await audit(tx, ctx, {
+      action: "debitnote.issue", entityType: "Invoice", entityId: dn.id, reason,
+      after: { number, originalInvoice: orig.number, grossMinor: tot.gross },
+    });
+    return dn;
+  });
 }
 
 export async function listInvoices(db: PrismaClient, ctx: Ctx, kinds?: string[]) {

@@ -1,4 +1,5 @@
 import { reservationAction } from "@/app/actions";
+import Link from "next/link";
 import { openFolioAction } from "@/app/billing-actions";
 import { btnGhost } from "@/app/ui";
 import { roleHasPermission } from "@/server/auth/permissions";
@@ -27,6 +28,9 @@ export function ReservationActions({ id, status, ctx, back, only }: { id: string
           <button className={btnGhost}>{b.label}</button>
         </form>
       ))}
+      {status === "CHECKED_IN" && !only && roleHasPermission(ctx.role, "frontdesk.checkout", ctx.extra) && (
+        <Link className={btnGhost} href={`/app/reservations/${id}/checkout`}>Settle &amp; check out</Link>
+      )}
       {roleHasPermission(ctx.role, "billing.view", ctx.extra) && ["TENTATIVE", "CONFIRMED", "CHECKED_IN", "CHECKED_OUT"].includes(status) && (
         <form action={openFolioAction}>
           <input type="hidden" name="reservationId" value={id} />

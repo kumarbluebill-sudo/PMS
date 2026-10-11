@@ -81,6 +81,9 @@ export async function addRoomTypeAction(fd: FormData) {
       maxAdults: num(fd.get("maxAdults"), 2),
       maxChildren: num(fd.get("maxChildren"), 0),
       baseRateMinor: Math.round(num(fd.get("baseRate")) * 100),
+      baseOccupancy: num(fd.get("baseOccupancy"), 2),
+      extraAdultRateMinor: rupeesOpt(str(fd.get("extraAdultRate"))) ?? 0,
+      extraChildRateMinor: rupeesOpt(str(fd.get("extraChildRate"))) ?? 0,
     }),
   );
 }
