@@ -131,6 +131,7 @@ model Room {
   // Operational status; separate from booking state.
   housekeeping   String  @default("CLEAN") // CLEAN | DIRTY | CLEANING | INSPECTED
   outOfOrder     Boolean @default(false)
+  floor          Int?
   createdAt      DateTime @default(now())
 
   property    Property   @relation(fields: [propertyId], references: [id])

@@ -11,10 +11,10 @@ const BUTTONS: { kind: string; label: string; status: string[]; perm: Parameters
   { kind: "cancel", label: "Cancel", status: ["CONFIRMED"], perm: "reservations.cancel" },
 ];
 
-export function ReservationActions({ id, status, ctx, back }: { id: string; status: string; ctx: Ctx; back: string }) {
+export function ReservationActions({ id, status, ctx, back, only }: { id: string; status: string; ctx: Ctx; back: string; only?: string[] }) {
   return (
     <div className="flex flex-wrap gap-1">
-      {BUTTONS.filter((b) => b.status.includes(status) && roleHasPermission(ctx.role, b.perm, ctx.extra)).map((b) => (
+      {BUTTONS.filter((b) => (!only || only.includes(b.kind)) && b.status.includes(status) && roleHasPermission(ctx.role, b.perm, ctx.extra)).map((b) => (
         <form key={b.kind} action={reservationAction}>
           <input type="hidden" name="id" value={id} />
           <input type="hidden" name="kind" value={b.kind} />

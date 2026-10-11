@@ -256,3 +256,20 @@ export async function listReservations(
     }),
   );
 }
+
+export async function getReservation(db: PrismaClient, ctx: Ctx, id: string) {
+  authorize(ctx, "reservations.view");
+  const propertyId = requireProperty(ctx);
+  return withTenant(db, ctx.tenantId, async (tx) => {
+    const r = await tx.reservation.findFirst({
+      where: { id, propertyId },
+      include: {
+        guest: true,
+        assignments: { include: { room: { include: { roomType: true } } }, orderBy: { createdAt: "asc" } },
+        history: { orderBy: { changedAt: "asc" } },
+      },
+    });
+    if (!r) throw new AppError("NOT_FOUND", "Reservation not found.");
+    return r;
+  });
+}

@@ -11,7 +11,7 @@ import { toSafeError } from "@/server/errors";
 import { rateLimit } from "@/server/rateLimit";
 import { registerTenant } from "@/server/services/tenant";
 import { sendVerification } from "@/server/services/accounts";
-import { createRoom, createRoomType } from "@/server/services/rooms";
+import { createRoom, createRoomType, setRoomFloor } from "@/server/services/rooms";
 import { createGuest } from "@/server/services/guests";
 import { cancelReservation, checkIn, checkOut, createReservation, markNoShow } from "@/server/services/reservations";
 import { createMaintenanceRequest, setRoomStatus } from "@/server/services/housekeeping";
@@ -20,7 +20,7 @@ const num = (v: FormDataEntryValue | null, d = 0) => (v === null || v === "" ? d
 const str = (v: FormDataEntryValue | null) => (typeof v === "string" ? v : "");
 
 /** Runs a mutation; on failure redirects back with a safe message (no internals leaked). */
-async function run(back: string, fn: () => Promise<unknown>) {
+async function run(back: string, fn: () => Promise<unknown>, redirectBack = false) {
   let error: string | null = null;
   try {
     await fn();
@@ -29,7 +29,8 @@ async function run(back: string, fn: () => Promise<unknown>) {
     error = toSafeError(e).message;
   }
   revalidatePath("/app", "layout");
-  if (error) redirect(`${back}?error=${encodeURIComponent(error)}`);
+  if (error) redirect(`${back}${back.includes("?") ? "&" : "?"}error=${encodeURIComponent(error)}`);
+  if (redirectBack) redirect(back);
 }
 
 export async function registerAction(fd: FormData) {
@@ -84,7 +85,16 @@ export async function addRoomTypeAction(fd: FormData) {
 
 export async function addRoomAction(fd: FormData) {
   const ctx = await getCtx();
-  await run("/app/rooms", () => createRoom(getDb(), ctx, { roomTypeId: str(fd.get("roomTypeId")), number: str(fd.get("number")) }));
+  const floor = str(fd.get("floor")).trim();
+  await run("/app/rooms", () =>
+    createRoom(getDb(), ctx, { roomTypeId: str(fd.get("roomTypeId")), number: str(fd.get("number")), ...(floor !== "" && { floor: Number(floor) }) }),
+  );
+}
+
+export async function roomFloorAction(fd: FormData) {
+  const ctx = await getCtx();
+  const floor = str(fd.get("floor")).trim();
+  await run("/app/rooms", () => setRoomFloor(getDb(), ctx, str(fd.get("roomId")), floor === "" ? null : Number(floor)));
 }
 
 export async function addGuestAction(fd: FormData) {
@@ -125,9 +135,9 @@ export async function reservationAction(fd: FormData) {
 
 export async function roomStatusAction(fd: FormData) {
   const ctx = await getCtx();
-  await run("/app/housekeeping", () =>
-    setRoomStatus(getDb(), ctx, str(fd.get("roomId")), str(fd.get("status")) as "CLEAN"),
-  );
+  const back = str(fd.get("back"));
+  const target = /^\/app\/[\w\-/]*(\?[\w=&\-%.]*)?$/.test(back) ? back : "/app/housekeeping";
+  await run(target, () => setRoomStatus(getDb(), ctx, str(fd.get("roomId")), str(fd.get("status")) as "CLEAN"), true);
 }
 
 export async function maintenanceAction(fd: FormData) {

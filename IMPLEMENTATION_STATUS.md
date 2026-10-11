@@ -1,6 +1,6 @@
 # Implementation Status
 
-Last updated: 2026-10-10. "Done" means verified by an automated test (Vitest 92 tests, Playwright 2 tests) or a recorded manual check.
+Last updated: 2026-10-10. "Done" means verified by an automated test (Vitest 103 tests, Playwright 2 tests) or a recorded manual check.
 
 ## Phase 1: Foundation + core PMS - done (see git history); known gaps
 Email has no real provider (`email_outbox`, dev only, holds live tokens); no MFA recovery codes; in-memory rate limiter; onboarding is a checklist; extra permissions are per-member, not named roles; no guest editing or multi-room bookings; Playwright not in CI.
@@ -31,6 +31,20 @@ Email has no real provider (`email_outbox`, dev only, holds live tokens); no MFA
 - Room charges use the room type's base rate (no rate plans, seasonal rates, extra-person charges) and are posted manually or at check-out, not by a nightly audit job.
 - A single amount is capped at Rs 1,00,00,000 (32-bit paise columns).
 - Guest GSTIN/company fields exist in the schema but there is no guest-edit UI; B2B recipients are entered on the invoice form.
+
+## Operations improvements (in progress, brief of 2026-10-11)
+
+| Phase | Status | Verification |
+|---|---|---|
+| A. Room board dashboard: 10 cards from live data, every room listed, derived status (available / reserved / occupied / checkout due / cleaning / maintenance / out of order) with icon + label + legend, filters (date, floor, room type, status, search, arrival/checkout date), sort, table and grid views, quick actions, CSV export (permission-gated), stay detail page with extend / change room | Done | 11 integration tests (`dashboard.test.ts`), 6 unit tests (`roomStatus.test.ts`), e2e board row + mobile overflow |
+| B. Out-of-order form, maintenance categories, status history | Not started | |
+| C. Simplified reservation form + server-side quote | Not started | |
+| D. Guest feedback | Not started | |
+| E. Billing gaps (debit notes, PDF, categories, checkout exceptions) | Not started | |
+| F. Central settings hub | Not started | |
+| G. Cross-cutting tests / responsive checks | Not started | |
+
+Phase A notes: "Available rooms" counts rooms physically free now, including rooms with a later booking (shown separately). Occupied includes checkout-due. "Expected revenue" is tonight's room nights at the room type base rate before tax. "Pending payments" is posted folio balances for in-house guests (unposted room nights are not included). Housekeeping state is shown for today only; other dates are projections. Rooms have an optional floor (`rooms.floor`), editable on the Rooms page. The migration `app_role_policies` is for hosted Postgres that auto-enables RLS (e.g. Supabase) and must be applied there before sign-up works.
 
 ## Not started (later phases)
 Reports/analytics, rates & restrictions, channel manager, booking engine, SaaS billing/platform admin, backups dashboard, PWA, help center, deployment.

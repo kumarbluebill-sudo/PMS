@@ -82,6 +82,17 @@ test("owner registers, enrols MFA, runs a stay end to end, and it is audited", a
   await page.getByRole("button", { name: "Check in" }).click();
   await expect(page.getByText("In house (1)")).toBeVisible();
 
+  // The room board lists the room with its guest and a text status (not colour alone).
+  await page.goto("/app/dashboard");
+  const row101 = page.getByRole("row").filter({ has: page.getByRole("rowheader", { name: "101" }) });
+  await expect(row101.getByText("Occupied")).toBeVisible();
+  await expect(row101.getByText("Asha Verma")).toBeVisible();
+  await expect(page.getByRole("list", { name: "Room status legend" })).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 800 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto("/app/front-desk");
+
   // Check-out is refused while the folio has an unpaid balance (2 nights x Rs 4,500, unregistered so no GST).
   await page.getByRole("button", { name: "Check out" }).click();
   await expect(page.getByText(/outstanding balance of ₹9000\.00/)).toBeVisible();

@@ -26,7 +26,9 @@ export async function createRoomType(db: PrismaClient, ctx: Ctx, input: unknown)
 export async function createRoom(db: PrismaClient, ctx: Ctx, input: unknown) {
   authorize(ctx, "rooms.manage");
   const propertyId = requireProperty(ctx);
-  const d = z.object({ roomTypeId: z.string().uuid(), number: z.string().trim().min(1).max(20) }).parse(input);
+  const d = z
+    .object({ roomTypeId: z.string().uuid(), number: z.string().trim().min(1).max(20), floor: z.number().int().min(-5).max(200).optional() })
+    .parse(input);
   return withTenant(db, ctx.tenantId, async (tx) => {
     const rt = await tx.roomType.findFirst({ where: { id: d.roomTypeId, propertyId } });
     if (!rt) throw new AppError("NOT_FOUND", "Room type not found.");
@@ -35,6 +37,18 @@ export async function createRoom(db: PrismaClient, ctx: Ctx, input: unknown) {
     const room = await tx.room.create({ data: { ...d, tenantId: ctx.tenantId, propertyId } });
     await audit(tx, ctx, { action: "room.create", entityType: "Room", entityId: room.id, after: d });
     return room;
+  });
+}
+
+export async function setRoomFloor(db: PrismaClient, ctx: Ctx, roomId: string, floor: number | null) {
+  authorize(ctx, "rooms.manage");
+  const propertyId = requireProperty(ctx);
+  const f = z.number().int().min(-5).max(200).nullable().parse(floor);
+  return withTenant(db, ctx.tenantId, async (tx) => {
+    const room = await tx.room.findFirst({ where: { id: roomId, propertyId } });
+    if (!room) throw new AppError("NOT_FOUND", "Room not found.");
+    await tx.room.update({ where: { id: room.id }, data: { floor: f } });
+    await audit(tx, ctx, { action: "room.floor", entityType: "Room", entityId: room.id, before: { floor: room.floor }, after: { floor: f } });
   });
 }
 

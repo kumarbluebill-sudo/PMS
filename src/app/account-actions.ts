@@ -115,14 +115,20 @@ export async function mfaConfirmAction(fd: FormData) {
   await run("/security", () => confirmMfaEnrolment(getDb(), ctx, str(fd.get("code"))), "MFA enabled.");
 }
 
+/** Only same-site /app paths are accepted as a return target. */
+const backTo = (fd: FormData, fallback: string) => {
+  const b = str(fd.get("back"));
+  return /^\/app\/[\w\-/]*(\?[\w=&\-%.]*)?$/.test(b) ? b : fallback;
+};
+
 export async function extendStayAction(fd: FormData) {
   const ctx = await getCtx();
-  await run("/app/front-desk", () => changeDeparture(getDb(), ctx, str(fd.get("id")), str(fd.get("departure"))));
+  await run(backTo(fd, "/app/front-desk"), () => changeDeparture(getDb(), ctx, str(fd.get("id")), str(fd.get("departure"))), "Departure changed.");
 }
 
 export async function moveRoomAction(fd: FormData) {
   const ctx = await getCtx();
-  await run("/app/front-desk", () => moveRoom(getDb(), ctx, str(fd.get("id")), str(fd.get("roomId")), str(fd.get("reason"))));
+  await run(backTo(fd, "/app/front-desk"), () => moveRoom(getDb(), ctx, str(fd.get("id")), str(fd.get("roomId")), str(fd.get("reason"))), "Room changed.");
 }
 
 export async function resolveMaintenanceAction(fd: FormData) {

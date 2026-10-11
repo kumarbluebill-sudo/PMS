@@ -7,7 +7,7 @@ import { listRooms } from "@/server/services/rooms";
 import { listMaintenance } from "@/server/services/stays";
 
 export default async function Maintenance({ searchParams }: PageProps<"/app/maintenance">) {
-  const { error } = await searchParams;
+  const { error, roomId } = await searchParams;
   const ctx = await getCtx();
   const [rooms, items] = await Promise.all([listRooms(getDb(), ctx), listMaintenance(getDb(), ctx)]);
   return (
@@ -18,7 +18,7 @@ export default async function Maintenance({ searchParams }: PageProps<"/app/main
         <Card title="New request">
           <form action={maintenanceAction} className="space-y-3">
             <Field label="Room">
-              <select name="roomId" required className={input}>
+              <select name="roomId" required defaultValue={typeof roomId === "string" ? roomId : undefined} className={input}>
                 {rooms.map((r) => <option key={r.id} value={r.id}>{r.number}</option>)}
               </select>
             </Field>

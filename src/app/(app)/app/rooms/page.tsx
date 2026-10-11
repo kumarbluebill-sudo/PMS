@@ -1,5 +1,5 @@
-import { addRoomAction } from "@/app/actions";
-import { Badge, btn, Card, ErrorBanner, Field, input, PageHeader } from "@/app/ui";
+import { addRoomAction, roomFloorAction } from "@/app/actions";
+import { Badge, btn, btnGhost, Card, ErrorBanner, Field, input, PageHeader } from "@/app/ui";
 import { getDb } from "@/server/db/client";
 import { getCtx } from "@/server/session";
 import { listRooms, listRoomTypes } from "@/server/services/rooms";
@@ -21,6 +21,7 @@ export default async function Rooms({ searchParams }: PageProps<"/app/rooms">) {
               </select>
             </Field>
             <Field label="Room number"><input name="number" required className={input} /></Field>
+            <Field label="Floor (optional)"><input name="floor" type="number" min={-5} max={200} className={input} /></Field>
             <button className={btn} disabled={types.length === 0}>Add</button>
             {types.length === 0 && <p className="text-xs text-slate-500">Create a room type first.</p>}
           </form>
@@ -28,8 +29,13 @@ export default async function Rooms({ searchParams }: PageProps<"/app/rooms">) {
         <Card title={`Rooms (${rooms.length})`}>
           <ul className="divide-y text-sm">
             {rooms.map((r) => (
-              <li key={r.id} className="flex items-center justify-between py-2">
+              <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
                 <span>{r.number} <span className="text-slate-500">{r.roomType.name}</span></span>
+                <form action={roomFloorAction} className="flex items-center gap-1">
+                  <input type="hidden" name="roomId" value={r.id} />
+                  <input name="floor" type="number" min={-5} max={200} defaultValue={r.floor ?? ""} aria-label={`Floor for room ${r.number}`} placeholder="Floor" className="w-16 rounded border border-slate-300 p-1 text-xs" />
+                  <button className={btnGhost}>Set</button>
+                </form>
                 <Badge value={r.housekeeping} />
               </li>
             ))}
