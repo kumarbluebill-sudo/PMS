@@ -4,6 +4,7 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { authorize, requireProperty, type Ctx } from "@/server/auth/context";
 import { withTenant } from "@/server/db/withTenant";
 import { AppError } from "@/server/errors";
+import { blockCoversDate, blockOverlapsStay } from "@/server/domain/roomBlock";
 import { assertTransition, nightsBetween, type ReservationStatus } from "@/server/domain/stay";
 import { audit } from "./audit";
 import { folioBalance, postRoomNightsTx } from "./billing";
@@ -36,22 +37,35 @@ export async function findFreeRooms(
   arrival: string,
   departure: string,
 ) {
-  const blocked = await tx.maintenanceRequest.findMany({
+  // A block removes a room only for the dates it covers; an out-of-order flag with no open block stays excluded.
+  const blocking = await tx.maintenanceRequest.findMany({
     where: { propertyId, blocksRoom: true, status: { not: "RESOLVED" } },
-    select: { roomId: true },
+    select: { roomId: true, startDate: true, expectedResolution: true },
   });
-  return tx.room.findMany({
+  const blockedForStay = new Set(
+    blocking
+      .filter((b) =>
+        blockOverlapsStay(
+          { startDate: b.startDate ? b.startDate.toISOString().slice(0, 10) : null, expectedResolution: b.expectedResolution ? b.expectedResolution.toISOString().slice(0, 10) : null },
+          arrival,
+          departure,
+        ),
+      )
+      .map((b) => b.roomId),
+  );
+  const hasOpenBlock = new Set(blocking.map((b) => b.roomId));
+  const rooms = await tx.room.findMany({
     where: {
       propertyId,
       roomTypeId,
-      outOfOrder: false,
-      id: { notIn: blocked.map((b) => b.roomId) },
+      id: { notIn: [...blockedForStay] },
       assignments: {
         none: { active: true, arrival: { lt: toDate(departure) }, departure: { gt: toDate(arrival) } },
       },
     },
     orderBy: { number: "asc" },
   });
+  return rooms.filter((r) => !r.outOfOrder || hasOpenBlock.has(r.id));
 }
 
 export async function searchAvailability(
@@ -195,6 +209,18 @@ export async function checkIn(db: PrismaClient, ctx: Ctx, id: string) {
     });
     if (!a) throw new AppError("CONFLICT", "No room is assigned to this reservation.");
     if (a.room.outOfOrder) throw new AppError("CONFLICT", `Room ${a.room.number} is out of order.`);
+    const today = new Date().toISOString().slice(0, 10);
+    const blocks = await tx.maintenanceRequest.findMany({
+      where: { roomId: a.roomId, blocksRoom: true, status: { not: "RESOLVED" } },
+      select: { startDate: true, expectedResolution: true, title: true },
+    });
+    const live = blocks.find((b) =>
+      blockCoversDate(
+        { startDate: b.startDate ? b.startDate.toISOString().slice(0, 10) : null, expectedResolution: b.expectedResolution ? b.expectedResolution.toISOString().slice(0, 10) : null },
+        today,
+      ),
+    );
+    if (live) throw new AppError("CONFLICT", `Room ${a.room.number} is blocked for maintenance: ${live.title}.`);
     if (a.room.housekeeping !== "CLEAN" && a.room.housekeeping !== "INSPECTED") {
       throw new AppError("CONFLICT", `Room ${a.room.number} is not ready (${a.room.housekeeping.toLowerCase()}).`);
     }

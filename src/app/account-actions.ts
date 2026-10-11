@@ -12,7 +12,8 @@ import {
   resetMemberMfa, resetPassword, sendVerification, verifyEmail,
 } from "@/server/services/accounts";
 import { updateMember } from "@/server/services/users";
-import { changeDeparture, moveRoom, resolveMaintenance, updateProperty } from "@/server/services/stays";
+import { changeDeparture, moveRoom, updateProperty } from "@/server/services/stays";
+import { approveBlock, reportIssue, resolveIssue, updateIssue, type ReportIssueInput } from "@/server/services/roomBlocks";
 
 const str = (v: FormDataEntryValue | null) => (typeof v === "string" ? v : "");
 
@@ -131,9 +132,49 @@ export async function moveRoomAction(fd: FormData) {
   await run(backTo(fd, "/app/front-desk"), () => moveRoom(getDb(), ctx, str(fd.get("id")), str(fd.get("roomId")), str(fd.get("reason"))), "Room changed.");
 }
 
-export async function resolveMaintenanceAction(fd: FormData) {
+const checked = (fd: FormData, k: string) => fd.get(k) === "on";
+
+export async function reportIssueAction(fd: FormData) {
   const ctx = await getCtx();
-  await run("/app/maintenance", () => resolveMaintenance(getDb(), ctx, str(fd.get("id"))));
+  const opt = (k: string) => str(fd.get(k)).trim() || undefined;
+  const roomId = str(fd.get("roomId"));
+  let id: string | null = null;
+  let error: string | null = null;
+  try {
+    const m = await reportIssue(getDb(), ctx, {
+      roomId, mode: str(fd.get("mode")) as ReportIssueInput["mode"], category: str(fd.get("category")) as ReportIssueInput["category"],
+      title: str(fd.get("title")), description: opt("description"), priority: (opt("priority") ?? "NORMAL") as ReportIssueInput["priority"],
+      startDate: opt("startDate"), expectedResolution: opt("expectedResolution"), assignedTo: opt("assignedTo"),
+      acknowledgeBookings: checked(fd, "acknowledgeBookings"),
+    });
+    id = m.id;
+  } catch (e) {
+    error = toSafeError(e).message;
+  }
+  revalidatePath("/app", "layout");
+  if (error) redirect(`/app/maintenance?roomId=${encodeURIComponent(roomId)}&error=${encodeURIComponent(error)}`);
+  redirect(`/app/maintenance/${id}?ok=Recorded.`);
+}
+
+export async function resolveIssueAction(fd: FormData) {
+  const ctx = await getCtx();
+  const id = str(fd.get("id"));
+  await run(`/app/maintenance/${encodeURIComponent(id)}`, () => resolveIssue(getDb(), ctx, id, { resolutionNote: str(fd.get("resolutionNote")), confirmReady: checked(fd, "confirmReady") }), "Resolved.");
+}
+
+export async function approveBlockAction(fd: FormData) {
+  const ctx = await getCtx();
+  const id = str(fd.get("id"));
+  await run(`/app/maintenance/${encodeURIComponent(id)}`, () => approveBlock(getDb(), ctx, id), "Block approved.");
+}
+
+export async function updateIssueAction(fd: FormData) {
+  const ctx = await getCtx();
+  const id = str(fd.get("id"));
+  const assignee = str(fd.get("assignedTo"));
+  const status = str(fd.get("status"));
+  await run(`/app/maintenance/${encodeURIComponent(id)}`, () =>
+    updateIssue(getDb(), ctx, id, { ...(status && { status }), ...(fd.has("assignedTo") && { assignedTo: assignee || null }) }), "Updated.");
 }
 
 export async function updatePropertyAction(fd: FormData) {

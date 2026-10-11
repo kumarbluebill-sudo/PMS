@@ -3,6 +3,7 @@ import type { PrismaClient } from "@prisma/client";
 import { authorize, requireProperty, type Ctx } from "@/server/auth/context";
 import { roleHasPermission } from "@/server/auth/permissions";
 import { withTenant } from "@/server/db/withTenant";
+import { blockCoversDate, CATEGORY_LABELS, type IssueCategory } from "@/server/domain/roomBlock";
 import {
   DISPLAY_STATUSES,
   SELLABLE,
@@ -73,6 +74,7 @@ export type BoardCards = {
   pendingPaymentsMinor: number | null;
 };
 
+const shortDay = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "UTC" });
 const natural = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true });
 const STATUS_ORDER = new Map(DISPLAY_STATUSES.map((s, i) => [s, i]));
 
@@ -117,7 +119,7 @@ export async function roomBoard(db: PrismaClient, ctx: Ctx, input: BoardFilter =
     const open = await tx.maintenanceRequest.findMany({
       where: { propertyId, status: { not: "RESOLVED" } },
       orderBy: { createdAt: "desc" },
-      select: { id: true, roomId: true, title: true, blocksRoom: true },
+      select: { id: true, roomId: true, title: true, blocksRoom: true, mode: true, category: true, startDate: true, expectedResolution: true, approvalRequired: true, approvedBy: true },
     });
 
     // Reservations that checked out on the viewed date (their assignment is inactive after checkout).
@@ -165,9 +167,17 @@ export async function roomBoard(db: PrismaClient, ctx: Ctx, input: BoardFilter =
       const projected = list.find((a) => iso(a.arrival) < date && iso(a.departure) >= date);
       const upcomingA = list.find((a) => a.reservation.status === "CONFIRMED" && iso(a.arrival) >= date);
       const requests = oByRoom.get(room.id) ?? [];
-      const blocking = requests.find((m) => m.blocksRoom);
+      const openBlocks = requests.filter((m) => m.blocksRoom);
+      const window = (m: (typeof requests)[number]) => ({
+        startDate: m.startDate ? iso(m.startDate) : null,
+        expectedResolution: m.expectedResolution ? iso(m.expectedResolution) : null,
+      });
+      const covering = openBlocks.filter((m) => blockCoversDate(window(m), date));
+      // The out-of-order flag is a live state; on another date it only applies while a block covers that date.
+      const oooNow = room.outOfOrder && (live || openBlocks.length === 0 || covering.length > 0);
+      const blocking = covering[0];
       const status = deriveRoomStatus({
-        outOfOrder: room.outOfOrder,
+        outOfOrder: oooNow,
         maintenanceBlock: !!blocking,
         housekeeping: room.housekeeping,
         inHouse: inHouse ? { departure: iso(inHouse.departure) } : null,
@@ -190,9 +200,11 @@ export async function roomBoard(db: PrismaClient, ctx: Ctx, input: BoardFilter =
               ? mk(upcomingA.reservation, "UPCOMING", null)
               : null;
 
+      const describe = (m: (typeof requests)[number]) =>
+        `${CATEGORY_LABELS[m.category as IssueCategory] ?? m.category}: ${m.title}${m.expectedResolution ? ` (until ${shortDay(iso(m.expectedResolution))})` : ""}${m.approvalRequired && !m.approvedBy ? " [awaiting approval]" : ""}`;
       const reason =
-        status === "OUT_OF_ORDER" ? (requests.find((m) => m.blocksRoom)?.title ?? "No reason recorded") :
-        status === "MAINTENANCE" ? (blocking?.title ?? null) : null;
+        status === "OUT_OF_ORDER" ? (covering[0] ?? openBlocks[0] ? describe((covering[0] ?? openBlocks[0])!) : "No reason recorded") :
+        status === "MAINTENANCE" ? (blocking ? describe(blocking) : null) : null;
       return {
         roomId: room.id,
         number: room.number,
@@ -202,7 +214,7 @@ export async function roomBoard(db: PrismaClient, ctx: Ctx, input: BoardFilter =
         housekeeping: room.housekeeping,
         status,
         reason,
-        maintenanceId: (blocking ?? requests[0])?.id ?? null,
+        maintenanceId: (covering[0] ?? openBlocks[0] ?? requests[0])?.id ?? null,
         stay,
         balanceMinor: null,
         paymentStatus: null,

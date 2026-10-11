@@ -20,6 +20,7 @@ Run: `npm run db:start` (local Postgres, keep running) then
 | Accounting | Integration | journal balances, receivable = folio balances, revenue/tax accounts tie to the ledger, DB rejects an unbalanced entry |
 | Money parsing | Unit | no float error, junk rejected |
 | Room board | Unit + Integration + E2E | status precedence, timezone dates; every room listed, status/guest/checkout match the active stay, cards reconcile with rooms, out-of-order/maintenance rooms cannot be sold, filters/sort, future-date projection, role redaction, tenant isolation; board visible with text status, no overflow at 390px |
+| Room blocks | Unit + Integration + E2E | report vs block vs out of order, dated windows (inclusive end, arrival on last blocked day), form validation, in-house guest and overlapping-booking handling, check-in refused, approval needs another manager, resolution needs note + readiness, restored room needs cleaning, history append-only + RLS, role checks |
 | Billing UI | E2E | checkout refused with balance, post charges, UPI payment, bill of supply, checkout |
 
 ## Not covered yet

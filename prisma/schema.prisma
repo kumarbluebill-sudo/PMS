@@ -139,6 +139,7 @@ model Room {
   assignments RoomAssignment[]
   tasks       HousekeepingTask[]
   maintenance MaintenanceRequest[]
+  statusHistory RoomStatusHistory[]
 
   @@unique([propertyId, number])
   @@index([tenantId, propertyId])
@@ -251,16 +252,51 @@ model HousekeepingTask {
   @@map("housekeeping_tasks")
 }
 
+/// Append-only log of physical room state changes (blocks, restores, housekeeping).
+model RoomStatusHistory {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @db.Uuid
+  propertyId    String   @db.Uuid
+  roomId        String   @db.Uuid
+  kind          String // OUT_OF_ORDER | MAINTENANCE_BLOCK | RESTORED | APPROVED | HOUSEKEEPING
+  fromState     String?
+  toState       String
+  reason        String?
+  maintenanceId String?  @db.Uuid
+  changedBy     String   @db.Uuid
+  changedAt     DateTime @default(now())
+
+  room Room @relation(fields: [roomId], references: [id])
+
+  @@index([tenantId, roomId, changedAt])
+  @@map("room_status_history")
+}
+
 model MaintenanceRequest {
   id         String    @id @default(uuid()) @db.Uuid
   tenantId   String    @db.Uuid
   propertyId String    @db.Uuid
   roomId     String    @db.Uuid
   title      String
-  status     String    @default("OPEN")
+  status     String    @default("OPEN") // OPEN | IN_PROGRESS | RESOLVED
   blocksRoom Boolean   @default(false)
   createdAt  DateTime  @default(now())
   resolvedAt DateTime?
+  // Out-of-order / maintenance block details
+  mode               String    @default("REPORT") // REPORT | MAINTENANCE_BLOCK | OUT_OF_ORDER
+  category           String    @default("OTHER")
+  priority           String    @default("NORMAL") // LOW | NORMAL | HIGH | URGENT
+  description        String?
+  reportedAt         DateTime  @default(now())
+  reportedBy         String?   @db.Uuid
+  startDate          DateTime? @db.Date
+  expectedResolution DateTime? @db.Date
+  assignedTo         String?   @db.Uuid
+  approvalRequired   Boolean   @default(false)
+  approvedBy         String?   @db.Uuid
+  approvedAt         DateTime?
+  resolutionNote     String?
+  resolvedBy         String?   @db.Uuid
 
   property Property @relation(fields: [propertyId], references: [id])
   room     Room     @relation(fields: [roomId], references: [id])

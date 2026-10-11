@@ -100,19 +100,6 @@ export async function calendar(db: PrismaClient, ctx: Ctx, start: string, days =
   });
 }
 
-export async function resolveMaintenance(db: PrismaClient, ctx: Ctx, id: string) {
-  authorize(ctx, "maintenance.manage");
-  const propertyId = requireProperty(ctx);
-  return withTenant(db, ctx.tenantId, async (tx) => {
-    const m = await tx.maintenanceRequest.findFirst({ where: { id, propertyId } });
-    if (!m) throw new AppError("NOT_FOUND", "Request not found.");
-    if (m.status === "RESOLVED") return m;
-    const done = await tx.maintenanceRequest.update({ where: { id }, data: { status: "RESOLVED", resolvedAt: new Date() } });
-    await audit(tx, ctx, { action: "maintenance.resolve", entityType: "MaintenanceRequest", entityId: id });
-    return done;
-  });
-}
-
 export async function listMaintenance(db: PrismaClient, ctx: Ctx) {
   authorize(ctx, "maintenance.manage");
   const propertyId = requireProperty(ctx);

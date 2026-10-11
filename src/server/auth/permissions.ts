@@ -10,6 +10,9 @@ export const PERMISSIONS = [
   "guests.manage",
   "rooms.view",
   "rooms.manage",
+  "rooms.block",
+  "rooms.resolve",
+  "rooms.approve",
   "housekeeping.view",
   "housekeeping.update",
   "housekeeping.manage",
@@ -119,7 +122,7 @@ export const ROLE_PERMISSIONS: Record<RoleKey, readonly Permission[]> = {
     "cashier.operate",
   ],
   HOUSEKEEPING: ["rooms.view", "housekeeping.view", "housekeeping.update"],
-  MAINTENANCE: ["rooms.view", "maintenance.manage"],
+  MAINTENANCE: ["rooms.view", "maintenance.manage", "rooms.block", "rooms.resolve"],
   REVENUE_MANAGER: ["reservations.view", "rooms.view", "rates.manage", "finance.view", "reports.export", "billing.view"],
   AUDITOR: ["reservations.view", "guests.view", "rooms.view", "finance.view", "audit.view", "billing.view", "accounting.view"],
 };

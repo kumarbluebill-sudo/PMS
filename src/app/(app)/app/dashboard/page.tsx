@@ -29,8 +29,8 @@ function RowActions({ row, ctx, back, date }: { row: BoardRow; ctx: Ctx; back: s
       {(row.status === "AVAILABLE" || row.status === "RESERVED") && can("reservations.create") && (
         <Link href={`/app/reservations?roomTypeId=${row.roomTypeId}&roomId=${row.roomId}&arrival=${date}`} className={btnGhost}>New booking</Link>
       )}
-      {(row.status === "OUT_OF_ORDER" || row.status === "MAINTENANCE") && can("maintenance.manage") && (
-        <Link href="/app/maintenance" className={btnGhost}>View reason</Link>
+      {(row.status === "OUT_OF_ORDER" || row.status === "MAINTENANCE") && can("rooms.view") && (
+        <Link href={row.maintenanceId ? `/app/maintenance/${row.maintenanceId}` : "/app/maintenance"} className={btnGhost}>View reason</Link>
       )}
       {can("housekeeping.update") && (row.status === "AVAILABLE" || row.status === "RESERVED" || row.status === "CLEANING") && (
         <form action={roomStatusAction}>

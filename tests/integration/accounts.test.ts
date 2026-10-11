@@ -8,7 +8,8 @@ import {
   requestPasswordReset, resetMemberMfa, resetPassword, sendVerification, verifyEmail,
 } from "@/server/services/accounts";
 import { listMembers, updateMember } from "@/server/services/users";
-import { calendar, changeDeparture, listMaintenance, moveRoom, resolveMaintenance } from "@/server/services/stays";
+import { calendar, changeDeparture, listMaintenance, moveRoom } from "@/server/services/stays";
+import { resolveIssue } from "@/server/services/roomBlocks";
 import { createRoom, createRoomType } from "@/server/services/rooms";
 import { createGuest } from "@/server/services/guests";
 import { createReservation, checkIn, findFreeRooms } from "@/server/services/reservations";
@@ -177,7 +178,7 @@ describe("stay operations", () => {
     expect(await free()).toBe(3);
     const m = await createMaintenanceRequest(app, owner, { roomId: rooms[0].id, title: "Leak", blocksRoom: true });
     expect(await free()).toBe(2);
-    await resolveMaintenance(app, owner, m.id);
+    await resolveIssue(app, owner, m.id, { resolutionNote: "Leak repaired", confirmReady: true });
     expect(await free()).toBe(3);
     expect((await listMaintenance(app, owner)).find((x) => x.id === m.id)?.status).toBe("RESOLVED");
   });

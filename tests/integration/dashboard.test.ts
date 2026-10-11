@@ -106,8 +106,8 @@ describe("room board", () => {
 
   it("shows out-of-order and maintenance reasons", async () => {
     const r = byNumber((await roomBoard(app, owner)).rows);
-    expect(r["104"].reason).toBe("AC compressor failed");
-    expect(r["105"].reason).toBe("Repaint walls");
+    expect(r["104"].reason).toBe("Other: AC compressor failed");
+    expect(r["105"].reason).toBe("Other: Repaint walls");
     expect(r["104"].maintenanceId).toBeTruthy();
   });
 

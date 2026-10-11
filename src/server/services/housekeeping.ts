@@ -17,6 +17,9 @@ export async function setRoomStatus(db: PrismaClient, ctx: Ctx, roomId: string, 
     const room = await tx.room.findFirst({ where: { id: roomId, propertyId } });
     if (!room) throw new AppError("NOT_FOUND", "Room not found.");
     await tx.room.update({ where: { id: room.id }, data: { housekeeping: status } });
+    await tx.roomStatusHistory.create({
+      data: { tenantId: ctx.tenantId, propertyId, roomId: room.id, kind: "HOUSEKEEPING", fromState: room.housekeeping, toState: status, changedBy: ctx.userId },
+    });
     if (status === "CLEAN" || status === "INSPECTED") {
       await tx.housekeepingTask.updateMany({
         where: { roomId: room.id, status: { in: ["PENDING", "IN_PROGRESS"] } },

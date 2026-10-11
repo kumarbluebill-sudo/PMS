@@ -1,6 +1,6 @@
 # Implementation Status
 
-Last updated: 2026-10-10. "Done" means verified by an automated test (Vitest 103 tests, Playwright 2 tests) or a recorded manual check.
+Last updated: 2026-10-10. "Done" means verified by an automated test (Vitest 127 tests, Playwright 2 tests) or a recorded manual check.
 
 ## Phase 1: Foundation + core PMS - done (see git history); known gaps
 Email has no real provider (`email_outbox`, dev only, holds live tokens); no MFA recovery codes; in-memory rate limiter; onboarding is a checklist; extra permissions are per-member, not named roles; no guest editing or multi-room bookings; Playwright not in CI.
@@ -37,12 +37,14 @@ Email has no real provider (`email_outbox`, dev only, holds live tokens); no MFA
 | Phase | Status | Verification |
 |---|---|---|
 | A. Room board dashboard: 10 cards from live data, every room listed, derived status (available / reserved / occupied / checkout due / cleaning / maintenance / out of order) with icon + label + legend, filters (date, floor, room type, status, search, arrival/checkout date), sort, table and grid views, quick actions, CSV export (permission-gated), stay detail page with extend / change room | Done | 11 integration tests (`dashboard.test.ts`), 6 unit tests (`roomStatus.test.ts`), e2e board row + mobile overflow |
-| B. Out-of-order form, maintenance categories, status history | Not started | |
+| B. Out-of-order / maintenance blocks: category, priority, reason, description (required for Other), dates, assignee, approval, resolution with note + readiness confirmation; room returns to "needs cleaning", never straight to sellable; dated blocks only remove the room for the dates covered; check-in refused into a blocked room; append-only room status history | Done | 14 integration tests (`roomblocks.test.ts`), 3 unit tests, e2e block / reason on board / resolve |
 | C. Simplified reservation form + server-side quote | Not started | |
 | D. Guest feedback | Not started | |
 | E. Billing gaps (debit notes, PDF, categories, checkout exceptions) | Not started | |
 | F. Central settings hub | Not started | |
 | G. Cross-cutting tests / responsive checks | Not started | |
+
+Phase B notes: photo attachments are not built (needs object storage). Blocks raised by a role without `rooms.approve` take effect immediately and are flagged for a different manager to approve. A guest in house prevents a block; overlapping bookings must be acknowledged and are recorded in the audit log, but they are not moved automatically.
 
 Phase A notes: "Available rooms" counts rooms physically free now, including rooms with a later booking (shown separately). Occupied includes checkout-due. "Expected revenue" is tonight's room nights at the room type base rate before tax. "Pending payments" is posted folio balances for in-house guests (unposted room nights are not included). Housekeeping state is shown for today only; other dates are projections. Rooms have an optional floor (`rooms.floor`), editable on the Rooms page. The migration `app_role_policies` is for hosted Postgres that auto-enables RLS (e.g. Supabase) and must be applied there before sign-up works.
 
