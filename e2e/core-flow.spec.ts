@@ -137,6 +137,29 @@ test("owner registers, enrols MFA, runs a stay end to end, and it is audited", a
   await page.goto("/app/housekeeping");
   await expect(page.getByText("dirty").first()).toBeVisible();
 
+  // Guest feedback: staff create a private link, the guest answers without logging in, the link works once.
+  await page.goto("/app/reservations");
+  await page.getByRole("link", { name: /MK-[0-9A-F]{8}/ }).first().click();
+  await page.getByRole("button", { name: "Create feedback link" }).click();
+  const feedbackUrl = await page.getByLabel(/Send this link to the guest/).inputValue();
+  expect(feedbackUrl).toMatch(/\/feedback\/[0-9a-f-]{36}\.[\w-]{40,}$/);
+  const guestCtx = await page.context().browser()!.newContext({ viewport: { width: 390, height: 800 } });
+  const guest = await guestCtx.newPage();
+  await guest.goto(feedbackUrl);
+  await expect(guest.getByRole("heading", { name: /How was your stay, Asha\?/ })).toBeVisible();
+  await expect(guest.getByText("MK-")).toHaveCount(0); // no booking reference on the public page
+  expect(await guest.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await guest.getByRole("radio", { name: "Excellent (5 out of 5)" }).first().check({ force: true });
+  await guest.getByLabel("Comments").fill("Wonderful stay (e2e)");
+  await guest.getByRole("button", { name: "Send feedback" }).click();
+  await expect(guest.getByRole("heading", { name: "Thank you!" })).toBeVisible();
+  await guest.goto(feedbackUrl);
+  await expect(guest.getByText(/already been submitted/)).toBeVisible();
+  await guestCtx.close();
+  await page.goto("/app/feedback");
+  await expect(page.getByText("Wonderful stay (e2e)")).toBeVisible();
+  await expect(page.getByText(/Asha Verma/).first()).toBeVisible();
+
   // Block the room as out of order: the board shows the reason; resolving returns it needing cleaning.
   await page.goto("/app/maintenance");
   await page.getByLabel("Mark out of order (immediately)").check();

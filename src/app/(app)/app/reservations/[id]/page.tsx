@@ -6,6 +6,7 @@ import { getDb } from "@/server/db/client";
 import { getCtx } from "@/server/session";
 import { listRooms } from "@/server/services/rooms";
 import { getReservation } from "@/server/services/reservations";
+import { FeedbackLinkButton } from "../../FeedbackLinkButton";
 import { ReservationActions } from "../../ReservationActions";
 
 export default async function StayDetail({ params, searchParams }: PageProps<"/app/reservations/[id]">) {
@@ -47,6 +48,12 @@ export default async function StayDetail({ params, searchParams }: PageProps<"/a
             ))}
           </ul>
         </Card>
+        {roleHasPermission(ctx.role, "feedback.manage", ctx.extra) && (r.status === "CHECKED_IN" || r.status === "CHECKED_OUT") && (
+          <Card title="Guest feedback">
+            <p className="mb-2 text-sm text-slate-600">Create a private, single-use link the guest can open without logging in.</p>
+            <FeedbackLinkButton reservationId={r.id} />
+          </Card>
+        )}
         {canModify && (
           <Card title="Change stay">
             <form action={extendStayAction} className="flex flex-wrap items-center gap-2">

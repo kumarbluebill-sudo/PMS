@@ -201,6 +201,8 @@ model Reservation {
   guest       Guest    @relation(fields: [guestId], references: [id])
   assignments RoomAssignment[]
   history     ReservationStatusHistory[]
+  feedback      Feedback[]
+  feedbackLinks FeedbackLink[]
   folios      Folio[]
 
   @@unique([tenantId, reference])
@@ -282,6 +284,73 @@ model RoomStatusHistory {
 
   @@index([tenantId, roomId, changedAt])
   @@map("room_status_history")
+}
+
+// ---------- Guest feedback ----------
+
+/// The guest's original words are immutable; only `status` (complaint handling) may change. Notes live in FeedbackNote.
+model Feedback {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @db.Uuid
+  propertyId    String    @db.Uuid
+  reservationId String?   @db.Uuid
+  roomTypeId    String?   @db.Uuid
+  guestName     String
+  roomNumber    String?
+  arrival       DateTime? @db.Date
+  departure     DateTime? @db.Date
+  overall       Int
+  cleanliness   Int?
+  service       Int?
+  food          Int?
+  facilities    Int?
+  comments      String?
+  recommend     Boolean?
+  suggestions   String?
+  source        String    @default("STAFF") // STAFF | LINK
+  status        String    @default("NONE") // NONE | OPEN | IN_PROGRESS | RESOLVED
+  submittedBy   String?   @db.Uuid
+  submittedAt   DateTime  @default(now())
+
+  reservation Reservation?   @relation(fields: [reservationId], references: [id])
+  notes       FeedbackNote[]
+
+  @@index([tenantId, propertyId, submittedAt])
+  @@index([tenantId, reservationId])
+  @@map("feedback")
+}
+
+/// Internal follow-up notes, kept apart from the guest's feedback. Append-only.
+model FeedbackNote {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @db.Uuid
+  feedbackId String   @db.Uuid
+  note       String
+  authorId   String   @db.Uuid
+  createdAt  DateTime @default(now())
+
+  feedback Feedback @relation(fields: [feedbackId], references: [id])
+
+  @@index([tenantId, feedbackId])
+  @@map("feedback_notes")
+}
+
+/// Single-use, expiring link a guest uses to leave feedback without logging in. Only the hash of the token is stored.
+model FeedbackLink {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @db.Uuid
+  propertyId    String    @db.Uuid
+  reservationId String    @db.Uuid
+  tokenHash     String    @unique
+  expiresAt     DateTime
+  usedAt        DateTime?
+  createdBy     String    @db.Uuid
+  createdAt     DateTime  @default(now())
+
+  reservation Reservation @relation(fields: [reservationId], references: [id])
+
+  @@index([tenantId, reservationId])
+  @@map("feedback_links")
 }
 
 model MaintenanceRequest {

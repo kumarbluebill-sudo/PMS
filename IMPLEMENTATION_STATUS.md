@@ -1,6 +1,6 @@
 # Implementation Status
 
-Last updated: 2026-10-10. "Done" means verified by an automated test (Vitest 151 tests, Playwright 2 tests) or a recorded manual check.
+Last updated: 2026-10-10. "Done" means verified by an automated test (Vitest 170 tests, Playwright 2 tests) or a recorded manual check.
 
 ## Phase 1: Foundation + core PMS - done (see git history); known gaps
 Email has no real provider (`email_outbox`, dev only, holds live tokens); no MFA recovery codes; in-memory rate limiter; onboarding is a checklist; extra permissions are per-member, not named roles; no guest editing or multi-room bookings; Playwright not in CI.
@@ -39,10 +39,12 @@ Email has no real provider (`email_outbox`, dev only, holds live tokens); no MFA
 | A. Room board dashboard: 10 cards from live data, every room listed, derived status (available / reserved / occupied / checkout due / cleaning / maintenance / out of order) with icon + label + legend, filters (date, floor, room type, status, search, arrival/checkout date), sort, table and grid views, quick actions, CSV export (permission-gated), stay detail page with extend / change room | Done | 11 integration tests (`dashboard.test.ts`), 6 unit tests (`roomStatus.test.ts`), e2e board row + mobile overflow |
 | B. Out-of-order / maintenance blocks: category, priority, reason, description (required for Other), dates, assignee, approval, resolution with note + readiness confirmation; room returns to "needs cleaning", never straight to sellable; dated blocks only remove the room for the dates covered; check-in refused into a blocked room; append-only room status history | Done | 14 integration tests (`roomblocks.test.ts`), 3 unit tests, e2e block / reason on board / resolve |
 | C. Reservation form: check availability + price first (server-calculated nights, rate, discount, GST estimate, per-type availability), then save; new or existing guest, mobile required, 7 booking sources, tentative/confirmed, multi-room group bookings, specific room from the board, discount (permission + reason), optional advance payment on the folio, printable confirmation, atomic locking + DB exclusion constraint | Done | 19 integration tests (`booking.test.ts`), 5 unit tests, e2e flow incl. mobile overflow |
-| D. Guest feedback | Not started | |
+| D. Guest feedback: staff entry (tied to a booking reference), single-use expiring public link (hash only stored, tenant-scoped, no login, no booking reference shown), dashboard (count, average, positive, low, by property / room type / category, date + rating + status + reference filters), internal notes kept separate, complaint status Open / In progress / Resolved, low-rating alerts on the room board and feedback page, guest details and booking refs hidden from roles without guest access | Done | 14 integration tests (`feedback.test.ts`), 5 unit tests, e2e link -> guest submit on a 390px viewport -> link now used -> staff sees it |
 | E. Billing gaps (debit notes, PDF, categories, checkout exceptions) | Not started | |
 | F. Central settings hub | Not started | |
 | G. Cross-cutting tests / responsive checks | Not started | |
+
+Phase D notes: the guest's original feedback is immutable in the database (only its complaint status can change); notes are append-only; a link can only be marked used, once. Feedback links are shown to staff once and must be sent by the user (no email/WhatsApp provider yet). The public submit is rate-limited per link with the in-memory limiter. "Low" means an overall rating of 1 or 2.
 
 Phase C notes: totals from the browser are ignored; the quote is recomputed on save. Rate plans do not exist yet (the only plan is the room type base rate; a discount stores an agreed nightly rate that the folio then uses). GST in the quote needs an approved rule for registered properties; otherwise the quote says it is unconfigured. If an advance cannot be recorded (e.g. cash with no open shift) the booking is kept and the failure is shown. Check-in in the past is refused for the new form; the legacy `createReservation` helper still allows it. ID numbers are stored encrypted; the PDF is the browser's print-to-PDF; email/WhatsApp delivery needs a provider.
 

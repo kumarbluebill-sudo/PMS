@@ -6,6 +6,7 @@ import type { Ctx } from "@/server/auth/context";
 import { getDb } from "@/server/db/client";
 import { DISPLAY_STATUSES, STATUS_META, type DisplayStatus } from "@/server/domain/roomStatus";
 import { getCtx } from "@/server/session";
+import { complaintAlerts } from "@/server/services/feedback";
 import { roomBoard, type BoardRow } from "@/server/services/dashboard";
 import { ReservationActions } from "../ReservationActions";
 import { RoomStatusChip, RoomStatusLegend } from "../RoomStatusChip";
@@ -72,6 +73,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/app/dashbo
     checkout: one(sp.checkout) && DAY.test(one(sp.checkout)!) ? one(sp.checkout) : undefined,
     sort: one(sp.sort) === "checkout" || one(sp.sort) === "status" ? (one(sp.sort) as "checkout" | "status") : "number",
   });
+  const alerts = await complaintAlerts(getDb(), ctx);
   const view = one(sp.view) === "grid" ? "grid" : "table";
   const c = board.cards;
   const qs = new URLSearchParams();
@@ -100,6 +102,11 @@ export default async function Dashboard({ searchParams }: PageProps<"/app/dashbo
       />
       <ErrorBanner message={typeof sp.error === "string" ? sp.error : undefined} />
 
+      {alerts.open > 0 && (
+        <p role="alert" className="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          {alerts.open} low-rating guest complaint(s) need follow-up. <Link className="underline" href="/app/feedback?rating=low">Review feedback</Link>
+        </p>
+      )}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-5" role="list" aria-label="Summary">
         {cards.map(([k, v, hint]) => (
           <div key={k} role="listitem">

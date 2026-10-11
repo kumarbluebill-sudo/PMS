@@ -20,6 +20,7 @@ const NAV: { href: string; label: string; perm: Permission }[] = [
   { href: "/app/accounting", label: "Accounting", perm: "accounting.view" },
   { href: "/app/rooms", label: "Rooms", perm: "rooms.view" },
   { href: "/app/room-types", label: "Room types", perm: "rooms.view" },
+  { href: "/app/feedback", label: "Feedback", perm: "feedback.view" },
   { href: "/app/housekeeping", label: "Housekeeping", perm: "housekeeping.view" },
   { href: "/app/maintenance", label: "Maintenance", perm: "maintenance.manage" },
   { href: "/app/users", label: "Users", perm: "users.manage" },
