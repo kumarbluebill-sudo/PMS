@@ -28,4 +28,4 @@ Run: `npm run db:start` (local Postgres, keep running) then
 | Billing UI | E2E | checkout refused with balance, post charges, UPI payment, bill of supply, checkout |
 
 ## Not covered yet
-GST-registered flow in the browser (maker-checker needs two users), credit-note UI, cashier UI, mobile layouts of billing screens, PDF output, mobile layout of other authenticated screens, accessibility audit, load/concurrency beyond the cases above, dependency scanning results, cross-browser. Billing/GST/reporting/channel tests belong to later phases.
+GST-registered flow in the browser (maker-checker needs two users; it is covered at service level), credit-note and cashier screens beyond their layout and accessibility, PDF visual layout (validity and pagination are tested, appearance is not), a manual screen-reader and keyboard review, load testing beyond the concurrency cases above, cross-browser (Edge only). Billing/GST/reporting/channel tests belong to later phases.

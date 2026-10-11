@@ -3,13 +3,15 @@ import { PageHeader, fmtDate } from "@/app/ui";
 import { getDb } from "@/server/db/client";
 import { getCtx } from "@/server/session";
 import { calendar } from "@/server/services/stays";
+import { propertyToday } from "@/server/services/roomBlocks";
 
 const DAY = 86_400_000;
 
 export default async function CalendarPage({ searchParams }: PageProps<"/app/reservations/calendar">) {
   const { start } = await searchParams;
-  const startDay = typeof start === "string" && /^\d{4}-\d{2}-\d{2}$/.test(start) ? start : fmtDate(new Date());
   const ctx = await getCtx();
+  const todayLocal = await propertyToday(getDb(), ctx);
+  const startDay = typeof start === "string" && /^\d{4}-\d{2}-\d{2}$/.test(start) ? start : todayLocal;
   const { rooms, assignments, from, days } = await calendar(getDb(), ctx, startDay, 14);
   const dates = Array.from({ length: days }, (_, i) => new Date(from.getTime() + i * DAY));
   const shift = (n: number) => fmtDate(new Date(from.getTime() + n * DAY));
@@ -20,7 +22,7 @@ export default async function CalendarPage({ searchParams }: PageProps<"/app/res
       <PageHeader title="Reservation calendar" subtitle="Each cell is a night; checkout day is free." />
       <div className="mb-3 flex gap-3 text-sm">
         <Link className="underline" href={`?start=${shift(-7)}`}>← Previous week</Link>
-        <Link className="underline" href={`?start=${fmtDate(new Date())}`}>Today</Link>
+        <Link className="underline" href={`?start=${todayLocal}`}>Today</Link>
         <Link className="underline" href={`?start=${shift(7)}`}>Next week →</Link>
       </div>
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">

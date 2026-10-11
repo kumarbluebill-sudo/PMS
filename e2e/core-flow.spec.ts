@@ -1,10 +1,18 @@
 import { expect, test, type Page } from "@playwright/test";
+import AxeBuilder from "@axe-core/playwright";
 import { generate } from "otplib";
 
 const stamp = Date.now().toString(36);
 const email = `e2e-${stamp}@test.local`;
 const password = "e2e-password-123";
 
+
+/** Fails on serious or critical WCAG A/AA problems on the page as currently shown (screens with real data). */
+async function expectAccessible(page: Page, label: string) {
+  const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
+  const bad = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical").map((v) => `${v.id}: ${v.nodes[0]?.target.join(" ")}`);
+  expect(bad, label).toEqual([]);
+}
 
 async function signIn(page: Page, code?: string) {
   await page.goto("/login");
@@ -88,6 +96,7 @@ test("owner registers, enrols MFA, runs a stay end to end, and it is audited", a
   await page.getByRole("button", { name: "Check availability and price" }).click();
   await expect(page.getByText("1 Deluxe room(s) available for 2 night(s).")).toBeVisible();
   await expect(page.getByText("₹9,000.00").first()).toBeVisible();
+  await expectAccessible(page, "reservation form with quote");
   await page.getByLabel("Existing guest").selectOption({ label: "Asha Verma" });
   await page.getByLabel("Mobile number").fill("98765 43210");
   await page.getByRole("button", { name: "Save booking" }).click();
@@ -117,6 +126,7 @@ test("owner registers, enrols MFA, runs a stay end to end, and it is audited", a
   const row101 = page.getByRole("row").filter({ has: page.getByRole("rowheader", { name: "101" }) });
   await expect(row101.getByText("Occupied")).toBeVisible();
   await expect(row101.getByText("Asha Verma")).toBeVisible();
+  await expectAccessible(page, "room board with data");
   await expect(page.getByRole("list", { name: "Room status legend" })).toBeVisible();
   await page.setViewportSize({ width: 390, height: 800 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -145,6 +155,7 @@ test("owner registers, enrols MFA, runs a stay end to end, and it is audited", a
   await expect(page.getByText(/INVB\/\d{4}\/000001/).first()).toBeVisible();
   await expect(page.getByText("No GST has been charged on this document.")).toBeVisible();
   await expect(page.getByText("Payable on receipt (e2e)")).toBeVisible();
+  await expectAccessible(page, "invoice");
   // The same document downloads as a real PDF.
   const pdfHref = await page.getByRole("link", { name: "Download PDF" }).getAttribute("href");
   const pdf = await page.request.get(pdfHref!);
@@ -175,6 +186,7 @@ test("owner registers, enrols MFA, runs a stay end to end, and it is audited", a
   const guest = await guestCtx.newPage();
   await guest.goto(feedbackUrl);
   await expect(guest.getByRole("heading", { name: /How was your stay, Asha\?/ })).toBeVisible();
+  await expectAccessible(guest, "public feedback form");
   await expect(guest.getByText("MK-")).toHaveCount(0); // no booking reference on the public page
   expect(await guest.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await guest.getByRole("radio", { name: "Excellent (5 out of 5)" }).first().check({ force: true });
@@ -186,6 +198,7 @@ test("owner registers, enrols MFA, runs a stay end to end, and it is audited", a
   await guestCtx.close();
   await page.goto("/app/feedback");
   await expect(page.getByText("Wonderful stay (e2e)")).toBeVisible();
+  await expectAccessible(page, "feedback dashboard with data");
   await expect(page.getByText(/Asha Verma/).first()).toBeVisible();
 
   // Block the room as out of order: the board shows the reason; resolving returns it needing cleaning.

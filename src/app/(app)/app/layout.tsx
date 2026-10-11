@@ -68,7 +68,7 @@ export default async function AppLayout({ children }: LayoutProps<"/app">) {
           </button>
         </form>
       </aside>
-      <main className="flex-1 bg-slate-50 p-4 md:p-6">
+      <main className="min-w-0 flex-1 bg-slate-50 p-4 md:p-6">
         {!ctx.emailVerified && (
           <form action={resendVerificationAction} className="mb-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
             Your email is not verified. <button className="underline">Resend verification email</button>

@@ -1,6 +1,6 @@
 # Implementation Status
 
-Last updated: 2026-10-10. "Done" means verified by an automated test (Vitest 216 tests, Playwright 2 tests) or a recorded manual check.
+Last updated: 2026-10-11. "Done" means verified by an automated test (Vitest 218 tests, Playwright 4 tests) or a recorded manual check.
 
 ## Phase 1: Foundation + core PMS - done (see git history); known gaps
 Email has no real provider (`email_outbox`, dev only, holds live tokens); no MFA recovery codes; in-memory rate limiter; onboarding is a checklist; extra permissions are per-member, not named roles; no guest editing or multi-room bookings; Playwright not in CI.
@@ -32,7 +32,7 @@ Email has no real provider (`email_outbox`, dev only, holds live tokens); no MFA
 - A single amount is capped at Rs 1,00,00,000 (32-bit paise columns).
 - Guest GSTIN/company fields exist in the schema but there is no guest-edit UI; B2B recipients are entered on the invoice form.
 
-## Operations improvements (in progress, brief of 2026-10-11)
+## Operations improvements (brief of 2026-10-11): all seven phases done locally, not yet deployed
 
 | Phase | Status | Verification |
 |---|---|---|
@@ -42,7 +42,9 @@ Email has no real provider (`email_outbox`, dev only, holds live tokens); no MFA
 | D. Guest feedback: staff entry (tied to a booking reference), single-use expiring public link (hash only stored, tenant-scoped, no login, no booking reference shown), dashboard (count, average, positive, low, by property / room type / category, date + rating + status + reference filters), internal notes kept separate, complaint status Open / In progress / Resolved, low-rating alerts on the room board and feedback page, guest details and booking refs hidden from roles without guest access | Done | 14 integration tests (`feedback.test.ts`), 5 unit tests, e2e link -> guest submit on a 390px viewport -> link now used -> staff sees it |
 | E. Billing: debit notes (own series, tax at the original invoice date), server-generated PDF for every document, extra-person charges, billing summary (room / extra person / restaurant / other / discounts / tax / advance / payments / refunds / outstanding), company folios with audited charge transfers, company-credit payments and manager-approved checkout exceptions, settle-and-check-out page (post nights, pay, exception, final invoice, room left dirty), payment receipts, charge posting with rate x quantity and posting date, GST summary + register with CSV export | Done | 16 integration tests (`billing-ext.test.ts`), 13 unit tests (folio maths, PDF, CSV), e2e PDF download + settlement page |
 | F. Settings hub (13 sections): a typed catalogue of 44 settings with permission, range and type checks, audited before/after, encrypted secrets that are never shown; applied by the app: booking reference prefix, min/max stay, booking sources, deposit requested, discount ceiling (bookings + folios), payment methods in use, refund approval limit, maintenance approval and categories, room status labels/colours, invoice terms/footer/logo, receipt footer, confirmation text and policies, report default range, session time limit; sign-in monitoring; honest status pages for channels, subscription, backup and system | Done | 14 integration tests (`settings.test.ts`), 8 unit tests, e2e save-reload-apply + mobile |
-| G. Cross-cutting tests / responsive checks | Not started | |
+| G. Cross-cutting checks: every app screen (32) fits 390px and 768px and has no serious/critical WCAG A/AA violations on desktop; real-data screens (room board, booking quote, invoice, feedback) checked too; dependency audit actioned; unit and integration suites across all phases | Done | `responsive-a11y.spec.ts`, axe checks in `core-flow.spec.ts`, `npm audit` (see docs/SECURITY.md) |
+
+Phase G notes: the automated accessibility check covers WCAG 2.0 A/AA rules that a machine can detect; it does not replace a manual screen-reader and keyboard review. Responsive checks look for sideways scrolling at 390px and 768px, not visual polish. Fixes found by these checks: the main column could not shrink inside the page layout (wide tables forced sideways scrolling at tablet width) and the calendar and front desk used the server's date instead of the property's.
 
 Phase F notes: settings the app does not act on yet are labelled as saved preferences (date format, housekeeping task types, email templates, backup retention, revenue definition). The email provider and API key can be stored but nothing is sent. Channel manager, subscription and backup monitoring are status pages only. Logo is an https link (no upload); it shows on the web invoice but not in the PDF. Adding a property is limited to owner, group admin and general manager. The session limit counts from sign-in (default 12 hours, 15 minutes minimum).
 

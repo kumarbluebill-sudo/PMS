@@ -1,6 +1,6 @@
 # MK Solutions Hotel PMS
 
-Multi-tenant cloud PMS for hotels and resorts. Phase 1 (core PMS) is built; billing/GST, reporting and channel management are planned. See [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) for what works and what does not, and [docs/](docs/) for architecture and security notes.
+Multi-tenant cloud PMS for hotels and resorts. Core PMS, billing/GST/accounting, the room board, reservations, guest feedback and settings are built; reporting, rates/channel manager, booking engine and SaaS billing are planned. See [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) for what works and what does not, and [docs/](docs/) for architecture and security notes.
 
 ## Local setup
 ```bash
