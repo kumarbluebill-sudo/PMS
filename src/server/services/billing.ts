@@ -8,6 +8,7 @@ import { extraPersonPerNight, summarizeFolio } from "@/server/domain/folio";
 import { dateInZone } from "@/server/domain/roomStatus";
 import { stayNights } from "@/server/domain/stay";
 import { audit } from "./audit";
+import { loadSettings } from "./settings";
 
 type Tx = Prisma.TransactionClient;
 
@@ -270,6 +271,12 @@ export async function postDiscount(db: PrismaClient, ctx: Ctx, folioId: string, 
     // Use the tariff of the charge being discounted so the same tax band applies.
     const lastCharge = entries.filter((e) => e.kind === "CHARGE").sort((a, b) => b.postedAt.getTime() - a.postedAt.getTime())[0];
     if (!lastCharge) throw new AppError("VALIDATION", "There is no charge in that category to discount.");
+    const st = await loadSettings(tx, ctx.tenantId, ctx.propertyId);
+    const charged = entries.filter((e) => e.kind === "CHARGE").reduce((s, e) => s + e.balanceDeltaMinor, 0);
+    const alreadyDiscounted = entries.filter((e) => e.kind === "DISCOUNT").reduce((s, e) => s - e.balanceDeltaMinor, 0);
+    if (st["billing.maxDiscountPercent"] < 100 && (alreadyDiscounted + d.amountMinor) * 100 > charged * st["billing.maxDiscountPercent"]) {
+      throw new AppError("VALIDATION", `Discounts are limited to ${st["billing.maxDiscountPercent"]}% of the charges at this property.`);
+    }
     const unit = Math.floor(lastCharge.netMinor / lastCharge.quantity);
     const entry = await insertCharge(tx, ctx, folio, "DISCOUNT", d, reason.trim(), unit);
     if (available + entry.balanceDeltaMinor < 0) {

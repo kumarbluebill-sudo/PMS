@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { PrismaClient } from "@prisma/client";
-import { authorize, requireProperty, type Ctx } from "@/server/auth/context";
+import { ALL_PROPERTY_ROLES, authorize, requireProperty, type Ctx } from "@/server/auth/context";
 import { withTenant } from "@/server/db/withTenant";
 import { AppError } from "@/server/errors";
 import { audit } from "./audit";
@@ -69,4 +69,31 @@ export async function listRooms(db: PrismaClient, ctx: Ctx) {
   return withTenant(db, ctx.tenantId, (tx) =>
     tx.room.findMany({ where: { propertyId }, include: { roomType: true }, orderBy: { number: "asc" } }),
   );
+}
+
+/** Properties of the business this user can reach, with simple counts. */
+export async function listProperties(db: PrismaClient, ctx: Ctx) {
+  authorize(ctx, "settings.view");
+  return withTenant(db, ctx.tenantId, async (tx) => {
+    const props = await tx.property.findMany({ where: { id: { in: ctx.accessiblePropertyIds } }, orderBy: { createdAt: "asc" } });
+    const rooms = await tx.room.groupBy({ by: ["propertyId"], where: { propertyId: { in: props.map((p) => p.id) } }, _count: { _all: true } });
+    const types = await tx.roomType.groupBy({ by: ["propertyId"], where: { propertyId: { in: props.map((p) => p.id) } }, _count: { _all: true } });
+    return props.map((p) => ({
+      ...p,
+      rooms: rooms.find((r) => r.propertyId === p.id)?._count._all ?? 0,
+      roomTypes: types.find((r) => r.propertyId === p.id)?._count._all ?? 0,
+    }));
+  });
+}
+
+/** Adds another property to the business. Only roles that already see every property may do this. */
+export async function createProperty(db: PrismaClient, ctx: Ctx, input: unknown) {
+  authorize(ctx, "settings.manage");
+  if (!ALL_PROPERTY_ROLES.includes(ctx.role)) throw new AppError("FORBIDDEN", "Only an owner, group admin or general manager can add a property.");
+  const d = z.object({ name: z.string().trim().min(2, "Enter the property's name.").max(120) }).parse(input);
+  return withTenant(db, ctx.tenantId, async (tx) => {
+    const p = await tx.property.create({ data: { tenantId: ctx.tenantId, name: d.name } });
+    await audit(tx, { ...ctx, propertyId: p.id }, { action: "property.create", entityType: "Property", entityId: p.id, after: { name: d.name } });
+    return p;
+  });
 }

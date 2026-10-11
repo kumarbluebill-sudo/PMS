@@ -4,6 +4,7 @@ import { formatInr } from "@/server/money";
 import { getCtx } from "@/server/session";
 import { gstSummary } from "@/server/services/gstReports";
 import { propertyToday } from "@/server/services/roomBlocks";
+import { settingsFor } from "@/server/services/settings";
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const one = (v: string | string[] | undefined) => (typeof v === "string" ? v : "");
@@ -14,7 +15,8 @@ export default async function GstSummaryPage({ searchParams }: PageProps<"/app/i
   const ctx = await getCtx();
   const db = getDb();
   const today = await propertyToday(db, ctx);
-  const from = DAY.test(one(sp.from)) ? one(sp.from) : `${today.slice(0, 8)}01`;
+  const days = (await settingsFor(db, ctx))["reports.defaultRangeDays"];
+  const from = DAY.test(one(sp.from)) ? one(sp.from) : new Date(Date.parse(`${today}T00:00:00Z`) - (days - 1) * 86_400_000).toISOString().slice(0, 10);
   const to = DAY.test(one(sp.to)) ? one(sp.to) : today;
   let data: Awaited<ReturnType<typeof gstSummary>> | null = null;
   let error: string | null = null;

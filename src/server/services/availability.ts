@@ -9,7 +9,7 @@ export const isOverlapError = (e: unknown) =>
   e instanceof Error &&
   /no_overlap|23P01|exclusion constraint/i.test(e.message + JSON.stringify((e as { meta?: unknown }).meta ?? ""));
 
-export const newReference = () => `MK-${randomBytes(4).toString("hex").toUpperCase()}`;
+export const newReference = (prefix = "MK") => `${prefix}-${randomBytes(4).toString("hex").toUpperCase()}`;
 
 /** Rooms of a type that are sellable and free for [arrival, departure). */
 export async function findFreeRooms(

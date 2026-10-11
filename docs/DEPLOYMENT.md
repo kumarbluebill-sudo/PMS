@@ -18,3 +18,9 @@ Targets: GitHub + Vercel + managed PostgreSQL (e.g. Supabase). **Nothing has bee
 - [ ] MFA enforced for an owner account on staging
 - [ ] Backups configured and one restore tested (see `BACKUP_AND_RECOVERY.md`)
 - [ ] Email provider live; reset/invite emails received
+
+## Hosted Postgres that turns on row-level security automatically (e.g. Supabase)
+
+Such hosts enable RLS on every new table. Tables with a tenant policy are fine; the shared tables (tenants, users, memberships, tokens, audit, outbox) have none and the runtime role `pms_app` would be denied everything, so sign-up fails with "Something went wrong". Migration `20261011120000_app_role_policies` adds a policy for `pms_app` only (other roles, including the provider's public API roles, still see nothing) and a read-only policy on Prisma's bookkeeping table. Every later migration that adds a table also grants it to `pms_app` when that role exists.
+
+Order for a new hosted database: run `prisma migrate deploy` with the admin connection string, create the `pms_app` login role (NOSUPERUSER, NOBYPASSRLS), then run `prisma migrate deploy` again (the migrations are idempotent) so the policy and grants apply, and point `APP_DATABASE_URL` at `pms_app`.

@@ -13,6 +13,15 @@ const HOUR = 3_600_000;
 export const passwordSchema = z.string().min(10, "Use at least 10 characters").max(200);
 
 /** Placeholder transport: records the message in email_outbox. Swap for a real provider (Resend/SES) in deployment. */
+/** Sign-in outcomes, written to the audit log of every business the person belongs to (login monitoring). */
+export async function recordAuthEvent(db: PrismaClient, userId: string, action: "auth.login" | "auth.login_failed", detail?: string) {
+  const ms = await db.membership.findMany({ where: { userId, active: true }, select: { tenantId: true } });
+  if (ms.length === 0) return;
+  await db.auditLog.createMany({
+    data: ms.map((m) => ({ tenantId: m.tenantId, actorId: userId, action, entityType: "User", entityId: userId, reason: detail })),
+  });
+}
+
 export async function sendEmail(db: PrismaClient, toEmail: string, subject: string, body: string) {
   await db.emailOutbox.create({ data: { toEmail, subject, body } });
 }

@@ -57,6 +57,23 @@ test("owner registers, enrols MFA, runs a stay end to end, and it is audited", a
   await page.getByRole("button", { name: "Add", exact: true }).click();
   await expect(page.getByText("101")).toBeVisible();
 
+  // Settings persist across a reload and are applied (invoice terms, a renamed room status).
+  await page.goto("/app/settings/billing");
+  await page.getByLabel("Invoice terms").fill("Payable on receipt (e2e)");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByText("Settings saved.")).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel("Invoice terms")).toHaveValue("Payable on receipt (e2e)");
+  await page.goto("/app/settings/rooms");
+  await page.locator('input[name="label_AVAILABLE"]').fill("Ready to sell");
+  await page.getByRole("button", { name: "Save labels" }).click();
+  await expect(page.getByText("Status labels saved.")).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 800 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto("/app/dashboard");
+  await expect(page.getByRole("list", { name: "Room status legend" }).getByText("Ready to sell")).toBeVisible();
+
   // Guest + reservation starting today.
   await page.goto("/app/guests");
   await page.getByLabel("Name").fill("Asha Verma");
@@ -127,6 +144,7 @@ test("owner registers, enrols MFA, runs a stay end to end, and it is audited", a
   await expect(page.getByRole("heading", { name: "Bill of Supply" })).toBeVisible();
   await expect(page.getByText(/INVB\/\d{4}\/000001/).first()).toBeVisible();
   await expect(page.getByText("No GST has been charged on this document.")).toBeVisible();
+  await expect(page.getByText("Payable on receipt (e2e)")).toBeVisible();
   // The same document downloads as a real PDF.
   const pdfHref = await page.getByRole("link", { name: "Download PDF" }).getAttribute("href");
   const pdf = await page.request.get(pdfHref!);

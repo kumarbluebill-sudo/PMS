@@ -11,6 +11,7 @@ import { listRoomTypes } from "@/server/services/rooms";
 import { searchGuests } from "@/server/services/guests";
 import { listReservations } from "@/server/services/reservations";
 import { propertyToday } from "@/server/services/roomBlocks";
+import { settingsFor } from "@/server/services/settings";
 import { ReservationActions } from "../ReservationActions";
 
 const one = (v: string | string[] | undefined) => (typeof v === "string" ? v : "");
@@ -21,6 +22,7 @@ export default async function Reservations({ searchParams }: PageProps<"/app/res
   const ctx = await getCtx();
   const db = getDb();
   const can = (p: Parameters<typeof roleHasPermission>[1]) => roleHasPermission(ctx.role, p, ctx.extra);
+  const st = await settingsFor(db, ctx);
   const [list, types, guests, today] = await Promise.all([
     listReservations(db, ctx),
     listRoomTypes(db, ctx),
@@ -115,6 +117,7 @@ export default async function Reservations({ searchParams }: PageProps<"/app/res
                 <dt className="font-semibold">Estimated total</dt><dd className="font-semibold">{inr(quote.totalMinor)}</dd>
               </dl>
               {quote.taxNote && <p className="mt-2 text-xs text-slate-600">{quote.taxNote}</p>}
+              {quote.depositRequiredMinor > 0 && <p className="mt-2 text-sm"><strong>Deposit requested:</strong> {inr(quote.depositRequiredMinor)} ({st["reservation.depositPercent"]}% of the estimate)</p>}
               <p className="mt-2 text-xs text-slate-500">This is an estimate. The final bill is built from the folio when the stay is posted. The server recalculates everything when you save.</p>
               {byType.length > 0 && (
                 <table className="mt-3 w-full text-left text-xs">
@@ -148,7 +151,7 @@ export default async function Reservations({ searchParams }: PageProps<"/app/res
                 <Field label="Mobile number"><input name="g_mobile" type="tel" inputMode="tel" className={input} autoComplete="off" /></Field>
                 <Field label="Booking source">
                   <select name="source" defaultValue="WALK_IN" className={input}>
-                    {BOOKING_SOURCES.map((s) => <option key={s} value={s}>{SOURCE_LABELS[s]}</option>)}
+                    {BOOKING_SOURCES.filter((s) => st["reservation.enabledSources"].includes(s)).map((s) => <option key={s} value={s}>{SOURCE_LABELS[s]}</option>)}
                   </select>
                 </Field>
                 <Field label="Booking status">

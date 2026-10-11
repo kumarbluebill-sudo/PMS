@@ -4,6 +4,7 @@ import { getDb } from "@/server/db/client";
 import { formatInr } from "@/server/money";
 import { getCtx } from "@/server/session";
 import { getPaymentReceipt } from "@/server/services/payments";
+import { settingsFor } from "@/server/services/settings";
 import { PrintButton } from "../../../PrintButton";
 
 export default async function Receipt({ params }: PageProps<"/app/payments/[id]/receipt">) {
@@ -11,6 +12,7 @@ export default async function Receipt({ params }: PageProps<"/app/payments/[id]/
   const ctx = await getCtx();
   const { payment, property, balanceAfterMinor, receivedByName } = await getPaymentReceipt(getDb(), ctx, id);
   const res = payment.folio.reservation;
+  const st = await settingsFor(getDb(), ctx);
   return (
     <div className="mx-auto max-w-xl">
       <div className="mb-3 flex items-center justify-between print:hidden">
@@ -41,6 +43,7 @@ export default async function Receipt({ params }: PageProps<"/app/payments/[id]/
         <p className="mt-4 text-2xl font-semibold">{formatInr(payment.amountMinor)}</p>
         <p className="mt-1 text-slate-600">Balance on the folio after this payment: {formatInr(balanceAfterMinor)}</p>
         <p className="mt-4 text-xs text-slate-500">This receipt acknowledges money received. It is not a tax invoice.</p>
+        {st["billing.receiptFooter"] && <p className="mt-2 whitespace-pre-wrap text-xs text-slate-600">{st["billing.receiptFooter"]}</p>}
       </article>
     </div>
   );

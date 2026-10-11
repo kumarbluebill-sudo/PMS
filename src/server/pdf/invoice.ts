@@ -14,6 +14,9 @@ export type PdfInvoice = {
   recipient: Party;
   placeOfSupply?: string | null;
   placeOfSupplyName?: string | null;
+  /** From the hotel's billing settings. */
+  terms?: string | null;
+  footerNote?: string | null;
   lines: PdfLine[];
   totals: { netMinor: number; cgstMinor: number; sgstMinor: number; igstMinor: number; cessMinor: number; grossMinor: number };
 };
@@ -152,6 +155,15 @@ export async function renderInvoicePdf(inv: PdfInvoice): Promise<Uint8Array> {
   y -= 24;
   if (inv.kind === "BILL_OF_SUPPLY") text("No GST has been charged on this document.", M, y);
   else if (!inv.supplier.registered) text("Supplier is not registered under GST.", M, y);
+
+  for (const [title, body] of [["Terms", inv.terms], ["", inv.footerNote]] as const) {
+    if (!body) continue;
+    const lines = body.split(/\r?\n/).flatMap((l) => wrap(l, font, 8, W - 2 * M));
+    if (y - (lines.length + 2) * 10 < M + 20) newPage();
+    if (title) { text(title, M, y, bold, 8); y -= 11; }
+    for (const l of lines) { text(l, M, y, font, 8); y -= 10; }
+    y -= 6;
+  }
 
   pages.forEach((p, i) => {
     p.drawText(pdfSafe(`${inv.number}  |  Page ${i + 1} of ${pages.length}  |  Computer generated document`), {

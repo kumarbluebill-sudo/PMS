@@ -18,4 +18,10 @@ BEGIN
       EXECUTE format('CREATE POLICY app_role_access ON %I FOR ALL TO pms_app USING (true) WITH CHECK (true)', t);
     END IF;
   END LOOP;
+  -- Prisma's own bookkeeping table: read-only for the app (the System page shows migration status).
+  IF EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+             WHERE n.nspname = 'public' AND c.relname = '_prisma_migrations' AND c.relrowsecurity)
+     AND NOT EXISTS (SELECT 1 FROM pg_policy p WHERE p.polrelid = 'public._prisma_migrations'::regclass AND p.polname = 'app_role_read') THEN
+    CREATE POLICY app_role_read ON "_prisma_migrations" FOR SELECT TO pms_app USING (true);
+  END IF;
 END $$;

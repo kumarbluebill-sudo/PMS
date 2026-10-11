@@ -13,6 +13,7 @@ import { audit } from "./audit";
 import { findFreeRooms, isOverlapError, newReference, toDate } from "./availability";
 import { ensureFolio, loadRules } from "./billing";
 import { recordPayment } from "./payments";
+import { loadSettings } from "./settings";
 import { randomBytes } from "node:crypto";
 
 type Tx = Prisma.TransactionClient;
@@ -44,6 +45,8 @@ export type Quote = {
   totalMinor: number;
   taxStatus: "NOT_REGISTERED" | "APPLIED" | "UNCONFIGURED";
   taxNote: string | null;
+  /** Deposit the hotel asks for, from its reservation settings (0 when none). */
+  depositRequiredMinor: number;
   roomType: string;
   nightly: { date: string; netMinor: number; taxMinor: number; grossMinor: number }[];
 };
@@ -60,6 +63,9 @@ function nightsOrThrow(arrival: string, departure: string) {
 export async function computeQuote(tx: Tx, ctx: Ctx, propertyId: string, input: z.output<typeof quoteSchema>): Promise<Quote> {
   const nights = nightsOrThrow(input.arrival, input.departure);
   if (nights > 365) throw new AppError("VALIDATION", "A stay cannot be longer than 365 nights.");
+  const st = await loadSettings(tx, ctx.tenantId, propertyId);
+  if (nights < st["reservation.minNights"]) throw new AppError("VALIDATION", `The minimum stay is ${st["reservation.minNights"]} night(s).`);
+  if (nights > st["reservation.maxNights"]) throw new AppError("VALIDATION", `The maximum stay is ${st["reservation.maxNights"]} night(s).`);
   const [rt, property, rules] = await Promise.all([
     tx.roomType.findFirst({ where: { id: input.roomTypeId, propertyId } }),
     tx.property.findFirstOrThrow({ where: { id: propertyId } }),
@@ -71,6 +77,10 @@ export async function computeQuote(tx: Tx, ctx: Ctx, propertyId: string, input: 
     rate = discountedRate(rt.baseRateMinor, { percentBp: input.discountPercentBp, amountMinor: input.discountAmountMinor });
   } catch (e) {
     throw new AppError("VALIDATION", e instanceof Error ? e.message : "Invalid discount.");
+  }
+  const discountPct = rt.baseRateMinor > 0 ? ((rt.baseRateMinor - rate) * 100) / rt.baseRateMinor : 0;
+  if (discountPct > st["billing.maxDiscountPercent"] + 1e-9) {
+    throw new AppError("VALIDATION", `Discounts are limited to ${st["billing.maxDiscountPercent"]}% at this property.`);
   }
   const free = await findFreeRooms(tx, propertyId, rt.id, input.arrival, input.departure);
 
@@ -106,6 +116,7 @@ export async function computeQuote(tx: Tx, ctx: Ctx, propertyId: string, input: 
     totalMinor: sum("grossMinor"),
     taxStatus,
     taxNote,
+    depositRequiredMinor: Math.floor((sum("grossMinor") * st["reservation.depositPercent"] + 50) / 100),
     roomType: rt.name,
     nightly,
   };
@@ -178,6 +189,7 @@ export type BookingResult = {
   groupRef: string | null;
   quote: Quote;
   advance: { recorded: boolean; amountMinor: number; error?: string };
+  deposit: { requiredMinor: number; met: boolean };
 };
 
 /**
@@ -207,7 +219,7 @@ export async function createBooking(
   const mobile = mobileIn ? normalizeMobile(mobileIn) : null;
   if (mobileIn && !mobile) throw new AppError("VALIDATION", "Enter a valid mobile number (7 to 15 digits).");
 
-  let result: Omit<BookingResult, "advance">;
+  let result: Omit<BookingResult, "advance" | "deposit">;
   try {
     result = await withTenant(db, ctx.tenantId, async (tx) => {
       const property = await tx.property.findFirstOrThrow({ where: { id: propertyId }, select: { timezone: true } });
@@ -215,6 +227,10 @@ export async function createBooking(
         throw new AppError("VALIDATION", "Check-in cannot be in the past.");
       }
       nightsOrThrow(d.arrival, d.departure);
+      const st = await loadSettings(tx, ctx.tenantId, propertyId);
+      if ((BOOKING_SOURCES as readonly string[]).includes(d.source) && !(st["reservation.enabledSources"] as readonly string[]).includes(d.source)) {
+        throw new AppError("VALIDATION", `The booking source "${d.source.replaceAll("_", " ").toLowerCase()}" is not in use at this property.`);
+      }
       await tx.$queryRaw`SELECT id FROM rooms WHERE "propertyId" = ${propertyId}::uuid AND "roomTypeId" = ${d.roomTypeId}::uuid ORDER BY number FOR UPDATE`;
       const quote = await computeQuote(tx, ctx, propertyId, d);
       const rt = await tx.roomType.findFirstOrThrow({ where: { id: d.roomTypeId, propertyId } });
@@ -269,7 +285,7 @@ export async function createBooking(
         const children = share(d.children);
         const r = await tx.reservation.create({
           data: {
-            tenantId: ctx.tenantId, propertyId, reference: newReference(), guestId: guestId!, roomTypeId: d.roomTypeId,
+            tenantId: ctx.tenantId, propertyId, reference: newReference(st["reservation.referencePrefix"]), guestId: guestId!, roomTypeId: d.roomTypeId,
             source: d.source, arrival: toDate(d.arrival), departure: toDate(d.departure), adults, children,
             notes: d.notes, status: d.status, createdBy: ctx.userId, groupRef, companyName: d.companyName, agentName: d.agentName,
             ratePlan: d.ratePlan, agreedRateMinor: discounted ? quote.rateMinor : null, discountReason: discounted ? d.discountReason : null,
@@ -311,7 +327,8 @@ export async function createBooking(
       advance.error = toSafeError(e).message;
     }
   }
-  return { ...result, advance };
+  const requiredMinor = result.quote.depositRequiredMinor;
+  return { ...result, advance, deposit: { requiredMinor, met: requiredMinor === 0 || (advance.recorded && advance.amountMinor >= requiredMinor) } };
 }
 
 /** Single-room booking with an existing guest (kept for callers that do not need the full form). */

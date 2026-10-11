@@ -9,6 +9,7 @@ import { getCtx } from "@/server/session";
 import { folioDetail } from "@/server/services/billing";
 import { checkoutOverview } from "@/server/services/checkout";
 import { METHODS } from "@/server/services/payments";
+import { settingsFor } from "@/server/services/settings";
 
 export default async function CheckoutPage({ params, searchParams }: PageProps<"/app/reservations/[id]/checkout">) {
   const { id } = await params;
@@ -16,6 +17,7 @@ export default async function CheckoutPage({ params, searchParams }: PageProps<"
   const ctx = await getCtx();
   const db = getDb();
   const o = await checkoutOverview(db, ctx, id);
+  const st = await settingsFor(db, ctx);
   const r = o.reservation;
   const can = (p: Parameters<typeof roleHasPermission>[1]) => roleHasPermission(ctx.role, p, ctx.extra);
   if (r.status !== "CHECKED_IN") {
@@ -72,7 +74,7 @@ export default async function CheckoutPage({ params, searchParams }: PageProps<"
               <fieldset className="space-y-2">
                 <legend className="text-sm font-medium">Payment received now (optional)</legend>
                 <div className="grid grid-cols-2 gap-2">
-                  <Field label="Method"><select name="method" className={input}>{METHODS.filter((m) => m !== "COMPANY_CREDIT").map((m) => <option key={m} value={m}>{m}</option>)}</select></Field>
+                  <Field label="Method"><select name="method" className={input}>{METHODS.filter((m) => m !== "COMPANY_CREDIT" && st["billing.enabledPaymentMethods"].includes(m)).map((m) => <option key={m} value={m}>{m}</option>)}</select></Field>
                   <Field label="Amount (₹)"><input name="amount" inputMode="decimal" defaultValue={balance > 0 ? (balance / 100).toFixed(2) : ""} className={input} /></Field>
                 </div>
                 <Field label="Reference (UTR / slip no.)"><input name="reference" className={input} /></Field>

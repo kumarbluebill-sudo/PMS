@@ -1,12 +1,13 @@
 import { z } from "zod";
 import type { Prisma, PrismaClient } from "@prisma/client";
-import { authorize, requireProperty, type Ctx } from "@/server/auth/context";
+import { ALL_PROPERTY_ROLES, authorize, requireProperty, type Ctx } from "@/server/auth/context";
 import { roleHasPermission } from "@/server/auth/permissions";
 import { withTenant } from "@/server/db/withTenant";
 import { AppError } from "@/server/errors";
 import { dateInZone } from "@/server/domain/roomStatus";
 import { blockOverlapsStay, ISSUE_CATEGORIES, ISSUE_MODES, ISSUE_PRIORITIES } from "@/server/domain/roomBlock";
 import { audit } from "./audit";
+import { loadSettings } from "./settings";
 
 type Tx = Prisma.TransactionClient;
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -54,7 +55,7 @@ export async function listAssignableStaff(db: PrismaClient, ctx: Ctx) {
     include: { user: { select: { id: true, name: true } }, properties: { select: { propertyId: true } } },
   });
   return members
-    .filter((m) => m.properties.length === 0 || m.properties.some((p) => p.propertyId === propertyId))
+    .filter((m) => ALL_PROPERTY_ROLES.includes(m.role as never) || m.properties.some((p) => p.propertyId === propertyId))
     .map((m) => ({ userId: m.user.id, name: m.user.name, role: m.role }));
 }
 
@@ -113,7 +114,11 @@ export async function reportIssue(db: PrismaClient, ctx: Ctx, input: unknown) {
       }
     }
 
-    const approvalRequired = blocks && !roleHasPermission(ctx.role, "rooms.approve", ctx.extra);
+    const st = await loadSettings(tx, ctx.tenantId, propertyId);
+    if (!(st["rooms.maintenanceCategories"] as readonly string[]).includes(d.category)) {
+      throw new AppError("VALIDATION", "That maintenance category is not in use at this property.");
+    }
+    const approvalRequired = blocks && st["rooms.maintenanceRequireApproval"] && !roleHasPermission(ctx.role, "rooms.approve", ctx.extra);
     const m = await tx.maintenanceRequest.create({
       data: {
         tenantId: ctx.tenantId, propertyId, roomId: room.id,

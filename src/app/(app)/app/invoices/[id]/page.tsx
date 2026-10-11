@@ -8,6 +8,7 @@ import { formatInr } from "@/server/money";
 import { getCtx } from "@/server/session";
 import { CATEGORIES } from "@/server/services/billing";
 import { getInvoice } from "@/server/services/invoicing";
+import { settingsFor } from "@/server/services/settings";
 import { PrintButton } from "../../PrintButton";
 
 type Party = { name?: string; gstin?: string | null; stateCode?: string | null; address?: string | null; registered?: boolean };
@@ -17,6 +18,8 @@ export default async function InvoicePage({ params, searchParams }: PageProps<"/
   const { error } = await searchParams;
   const ctx = await getCtx();
   const inv = await getInvoice(getDb(), ctx, id);
+  const st = await settingsFor(getDb(), ctx);
+  const logo = st["general.logoUrl"];
   const sup = inv.supplier as Party;
   const rec = inv.recipient as Party;
   const title = { TAX_INVOICE: "Tax Invoice", BILL_OF_SUPPLY: "Bill of Supply", CREDIT_NOTE: "Credit Note", DEBIT_NOTE: "Debit Note" }[inv.kind] ?? inv.kind;
@@ -35,6 +38,11 @@ export default async function InvoicePage({ params, searchParams }: PageProps<"/
             {inv.reason && <p>Reason: {inv.reason}</p>}
           </div>
           <div className="text-right">
+            {logo && (
+              // The logo is an owner-supplied https address; next/image would need every host allow-listed.
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={logo} alt={`${sup.name ?? "Hotel"} logo`} className="mb-1 ml-auto max-h-14 max-w-40 object-contain" />
+            )}
             <p className="font-semibold">{sup.name}</p>
             {sup.address && <p>{sup.address}</p>}
             {sup.gstin ? <p>GSTIN: {sup.gstin} ({GST_STATES[sup.stateCode ?? ""] ?? sup.stateCode})</p> : <p className="text-slate-500">Not registered under GST</p>}
@@ -67,6 +75,8 @@ export default async function InvoicePage({ params, searchParams }: PageProps<"/
           </tfoot>
         </table>
         {inv.kind === "BILL_OF_SUPPLY" && <p className="mt-3 text-xs text-slate-500">No GST has been charged on this document.</p>}
+        {st["billing.invoiceTerms"] && <div className="mt-4"><p className="text-xs font-semibold uppercase text-slate-500">Terms</p><p className="whitespace-pre-wrap text-xs text-slate-700">{st["billing.invoiceTerms"]}</p></div>}
+        {st["billing.invoiceNotes"] && <p className="mt-3 whitespace-pre-wrap text-xs text-slate-600">{st["billing.invoiceNotes"]}</p>}
       </article>
       {canCredit && (
         <form action={creditNoteAction} className="mt-4 space-y-3 rounded-lg border border-slate-200 bg-white p-4 print:hidden">

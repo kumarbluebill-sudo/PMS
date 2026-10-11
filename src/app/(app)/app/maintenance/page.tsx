@@ -8,6 +8,7 @@ import { getCtx } from "@/server/session";
 import { listRooms } from "@/server/services/rooms";
 import { listAssignableStaff, propertyToday } from "@/server/services/roomBlocks";
 import { listMaintenance } from "@/server/services/stays";
+import { settingsFor } from "@/server/services/settings";
 
 const MODE_LABEL = { REPORT: "Report only", MAINTENANCE_BLOCK: "Maintenance block", OUT_OF_ORDER: "Out of order" } as const;
 
@@ -18,6 +19,7 @@ export default async function Maintenance({ searchParams }: PageProps<"/app/main
   const can = (p: Parameters<typeof roleHasPermission>[1]) => roleHasPermission(ctx.role, p, ctx.extra);
   const [rooms, items, staff] = await Promise.all([listRooms(db, ctx), listMaintenance(db, ctx), listAssignableStaff(db, ctx)]);
   const names = new Map(staff.map((s) => [s.userId, s.name]));
+  const st = await settingsFor(db, ctx);
   const today = await propertyToday(db, ctx);
   const canBlock = can("rooms.block");
   return (
@@ -41,7 +43,7 @@ export default async function Maintenance({ searchParams }: PageProps<"/app/main
             </fieldset>
             <Field label="Issue category">
               <select name="category" required className={input}>
-                {ISSUE_CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
+                {ISSUE_CATEGORIES.filter((c) => st["rooms.maintenanceCategories"].includes(c)).map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
               </select>
             </Field>
             <Field label="Reason"><input name="title" required minLength={3} maxLength={200} className={input} placeholder="e.g. AC not cooling" /></Field>

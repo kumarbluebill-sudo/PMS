@@ -4,6 +4,7 @@ import { GST_STATES } from "@/server/domain/gst";
 import { renderInvoicePdf } from "@/server/pdf/invoice";
 import { getCtx } from "@/server/session";
 import { getInvoice } from "@/server/services/invoicing";
+import { settingsFor } from "@/server/services/settings";
 
 type Party = { name?: string; gstin?: string | null; stateCode?: string | null; address?: string | null; registered?: boolean };
 
@@ -12,10 +13,12 @@ export async function GET(_req: NextRequest, { params }: RouteContext<"/app/invo
   const { id } = await params;
   const ctx = await getCtx();
   const inv = await getInvoice(getDb(), ctx, id);
+  const st = await settingsFor(getDb(), ctx);
   const bytes = await renderInvoicePdf({
     number: inv.number, kind: inv.kind, issuedDate: inv.issuedDate, originalNumber: inv.originalNumber, reason: inv.reason,
     supplier: inv.supplier as Party, recipient: inv.recipient as Party,
     placeOfSupply: inv.placeOfSupply, placeOfSupplyName: inv.placeOfSupply ? (GST_STATES[inv.placeOfSupply] ?? null) : null,
+    terms: st["billing.invoiceTerms"], footerNote: st["billing.invoiceNotes"],
     lines: inv.lines.map((l) => ({
       description: l.description, sacCode: l.sacCode, netMinor: l.netMinor, cgstMinor: l.cgstMinor, sgstMinor: l.sgstMinor,
       igstMinor: l.igstMinor, cessMinor: l.cessMinor, grossMinor: l.grossMinor,

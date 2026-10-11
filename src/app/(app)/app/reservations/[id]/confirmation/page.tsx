@@ -5,6 +5,7 @@ import { SOURCE_LABELS } from "@/server/domain/quote";
 import { formatInr } from "@/server/money";
 import { getCtx } from "@/server/session";
 import { bookingConfirmation } from "@/server/services/booking";
+import { settingsFor } from "@/server/services/settings";
 import { PrintButton } from "../../../PrintButton";
 
 export default async function Confirmation({ params, searchParams }: PageProps<"/app/reservations/[id]/confirmation">) {
@@ -13,6 +14,9 @@ export default async function Confirmation({ params, searchParams }: PageProps<"
   const ctx = await getCtx();
   const { property, group, totalMinor, paidMinor, balanceMinor } = await bookingConfirmation(getDb(), ctx, id);
   const first = group[0];
+  const st = await settingsFor(getDb(), ctx);
+  const depositMinor = Math.floor((totalMinor * st["reservation.depositPercent"] + 50) / 100);
+  const policies = [["Booking policies", st["general.bookingPolicies"]], ["Cancellation", st["reservation.cancellationPolicy"]], ["No-show", st["reservation.noShowRule"]], ["Children", st["reservation.childPolicy"]]].filter(([, v]) => v);
   const nights = Math.round((first.departure.getTime() - first.arrival.getTime()) / 86_400_000);
   const guests = group.reduce((t, g) => ({ adults: t.adults + g.adults, children: t.children + g.children }), { adults: 0, children: 0 });
   return (
@@ -43,6 +47,7 @@ export default async function Confirmation({ params, searchParams }: PageProps<"
             {property.gstin && <p>GSTIN: {property.gstin}</p>}
           </div>
         </header>
+        {st["reservation.confirmationHeader"] && <p className="mt-4 whitespace-pre-wrap">{st["reservation.confirmationHeader"]}</p>}
         <section className="mt-4 grid grid-cols-2 gap-x-6 gap-y-1">
           <p className="text-slate-500">Guest</p><p>{first.guest.name}{first.guest.phone ? ` · ${first.guest.phone}` : ""}</p>
           <p className="text-slate-500">Check-in</p><p>{fmtDate(first.arrival)} from {property.checkInTime}</p>
@@ -70,6 +75,15 @@ export default async function Confirmation({ params, searchParams }: PageProps<"
           {paidMinor !== null && (<><dt>Advance received</dt><dd className="text-right font-mono">{formatInr(paidMinor)}</dd></>)}
           {balanceMinor !== null && (<><dt className="font-semibold">Balance at stay</dt><dd className="text-right font-mono font-semibold">{formatInr(balanceMinor)}</dd></>)}
         </dl>
+        {depositMinor > 0 && (
+          <p className="mt-3 text-sm"><strong>Deposit requested:</strong> {formatInr(depositMinor)} ({st["reservation.depositPercent"]}% of the estimate){paidMinor !== null && paidMinor >= depositMinor ? " — received." : "."}</p>
+        )}
+        {policies.length > 0 && (
+          <div className="mt-4 space-y-2 text-xs text-slate-700">
+            {policies.map(([k, v]) => <p key={k} className="whitespace-pre-wrap"><strong>{k}:</strong> {v}</p>)}
+          </div>
+        )}
+        {st["reservation.confirmationFooter"] && <p className="mt-4 whitespace-pre-wrap">{st["reservation.confirmationFooter"]}</p>}
         <p className="mt-4 text-xs text-slate-500">
           Estimated amounts include GST where applicable and exclude extras. The final bill is issued at check-out. Please carry a valid photo ID.
         </p>

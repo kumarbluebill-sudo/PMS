@@ -12,6 +12,7 @@ import { getCtx } from "@/server/session";
 import { CATEGORIES, folioDetail } from "@/server/services/billing";
 import { METHODS, REFUND_METHODS } from "@/server/services/payments";
 import { propertyToday } from "@/server/services/roomBlocks";
+import { settingsFor } from "@/server/services/settings";
 
 const CATEGORY_LABEL: Record<string, string> = {
   ROOM: "Room", FNB: "Restaurant / food & beverage", SPA: "Spa", BANQUET: "Banquet / event", LAUNDRY: "Laundry",
@@ -25,6 +26,7 @@ export default async function FolioPage({ params, searchParams }: PageProps<"/ap
   const db = getDb();
   const d = await folioDetail(db, ctx, id);
   const today = await propertyToday(db, ctx);
+  const st = await settingsFor(db, ctx);
   const can = (p: Parameters<typeof roleHasPermission>[1]) => roleHasPermission(ctx.role, p, ctx.extra);
   const f = d.folio;
   const s = d.summary;
@@ -140,7 +142,7 @@ export default async function FolioPage({ params, searchParams }: PageProps<"/ap
                 <Field label="Quantity"><input name="quantity" type="number" min={1} defaultValue={1} className={input} /></Field>
               </div>
               <Field label="Description"><input name="description" required className={input} /></Field>
-              <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="taxInclusive" /> Rate includes GST</label>
+              <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="taxInclusive" defaultChecked={st["billing.taxInclusiveDefault"]} /> Rate includes GST</label>
               <div className="flex gap-2">
                 <button className={btn}>Post charge</button>
               </div>
@@ -160,7 +162,7 @@ export default async function FolioPage({ params, searchParams }: PageProps<"/ap
               <input type="hidden" name="folioId" value={f.id} />
               <input type="hidden" name="key" value={key()} />
               <div className="grid grid-cols-2 gap-2">
-                <Field label="Method"><select name="method" className={input}>{METHODS.filter((m) => m !== "COMPANY_CREDIT" || can("billing.waive")).map((m) => <option key={m} value={m}>{m}</option>)}</select></Field>
+                <Field label="Method"><select name="method" className={input}>{METHODS.filter((m) => st["billing.enabledPaymentMethods"].includes(m) && (m !== "COMPANY_CREDIT" || can("billing.waive"))).map((m) => <option key={m} value={m}>{m}</option>)}</select></Field>
                 <Field label="Amount (₹)"><input name="amount" required inputMode="decimal" defaultValue={d.balance > 0 ? (d.balance / 100).toFixed(2) : ""} className={input} /></Field>
               </div>
               <Field label="Reference (UTR / slip no. / company name)"><input name="reference" className={input} /></Field>

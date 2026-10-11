@@ -3,10 +3,12 @@ import type { PrismaClient } from "@prisma/client";
 import { authorize, requireProperty, type Ctx } from "@/server/auth/context";
 import { withTenant } from "@/server/db/withTenant";
 import { AppError } from "@/server/errors";
+import { PAYMENT_METHODS } from "@/server/domain/settings";
 import { audit } from "./audit";
+import { loadSettings } from "./settings";
 import { ACCOUNT, lockFolio, MAX_AMOUNT_MINOR, paymentAccount, postJournal } from "./billing";
 
-export const METHODS = ["CASH", "UPI", "CARD", "BANK_TRANSFER", "COMPANY_CREDIT", "OTHER"] as const;
+export const METHODS = PAYMENT_METHODS;
 /** Company credit is a promise by a company to pay later; it is settled by a bank/cash receipt, never refunded as such. */
 export const REFUND_METHODS = METHODS.filter((m) => m !== "COMPANY_CREDIT") as unknown as readonly ["CASH", "UPI", "CARD", "BANK_TRANSFER", "OTHER"];
 const iso = (d: Date) => d.toISOString().slice(0, 10);
@@ -37,6 +39,10 @@ export async function recordPayment(db: PrismaClient, ctx: Ctx, folioId: string,
     if ((d.reference?.length ?? 0) < 2) throw new AppError("VALIDATION", "Name the company or agent that will pay (enter it as the reference).");
   }
   return withTenant(db, ctx.tenantId, async (tx) => {
+    const st = await loadSettings(tx, ctx.tenantId, ctx.propertyId);
+    if (!(st["billing.enabledPaymentMethods"] as readonly string[]).includes(d.method)) {
+      throw new AppError("VALIDATION", `Payment by ${d.method.replaceAll("_", " ").toLowerCase()} is not in use at this property.`);
+    }
     // Lock first so concurrent deliveries of the same key serialise instead of racing.
     const folio = await lockFolio(tx, ctx, folioId);
     const dup = await tx.payment.findFirst({ where: { tenantId: ctx.tenantId, idempotencyKey: d.idempotencyKey } });
@@ -98,6 +104,12 @@ export async function refundPayment(
     .object({ method: z.enum(REFUND_METHODS), amountMinor: z.number().int().positive().max(MAX_AMOUNT_MINOR), reason: z.string().trim().min(3).max(300) })
     .parse(input);
   return withTenant(db, ctx.tenantId, async (tx) => {
+    const st = await loadSettings(tx, ctx.tenantId, ctx.propertyId);
+    const limit = st["billing.refundApprovalLimitMinor"];
+    if (limit > 0 && d.amountMinor > limit) {
+      // Large refunds are a manager's decision.
+      authorize(ctx, "billing.waive");
+    }
     const folio = await lockFolio(tx, ctx, folioId);
     const [paid, refunded] = await Promise.all([
       tx.payment.aggregate({ where: { folioId }, _sum: { amountMinor: true } }),

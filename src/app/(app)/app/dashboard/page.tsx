@@ -4,7 +4,9 @@ import { Badge, btn, btnGhost, Card, ErrorBanner, inr, input, PageHeader } from 
 import { roleHasPermission } from "@/server/auth/permissions";
 import type { Ctx } from "@/server/auth/context";
 import { getDb } from "@/server/db/client";
-import { DISPLAY_STATUSES, STATUS_META, type DisplayStatus } from "@/server/domain/roomStatus";
+import { DISPLAY_STATUSES, type DisplayStatus } from "@/server/domain/roomStatus";
+import { resolveStatusMeta, type StatusMeta } from "@/server/domain/settings";
+import { settingsFor } from "@/server/services/settings";
 import { getCtx } from "@/server/session";
 import { complaintAlerts } from "@/server/services/feedback";
 import { roomBoard, type BoardRow } from "@/server/services/dashboard";
@@ -74,6 +76,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/app/dashbo
     sort: one(sp.sort) === "checkout" || one(sp.sort) === "status" ? (one(sp.sort) as "checkout" | "status") : "number",
   });
   const alerts = await complaintAlerts(getDb(), ctx);
+  const meta: StatusMeta = resolveStatusMeta((await settingsFor(getDb(), ctx))["rooms.statusLabels"]);
   const view = one(sp.view) === "grid" ? "grid" : "table";
   const c = board.cards;
   const qs = new URLSearchParams();
@@ -126,7 +129,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/app/dashbo
         <label className="text-xs text-slate-600">Status
           <select name="status" defaultValue={rawStatus ?? ""} className={input}>
             <option value="">All</option>
-            {DISPLAY_STATUSES.map((s) => <option key={s} value={s}>{STATUS_META[s].label}</option>)}
+            {DISPLAY_STATUSES.map((s) => <option key={s} value={s}>{meta[s].label}</option>)}
           </select>
         </label>
         <label className="text-xs text-slate-600">Room type
@@ -160,7 +163,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/app/dashbo
         </div>
       </form>
 
-      <div className="mt-3"><RoomStatusLegend /></div>
+      <div className="mt-3"><RoomStatusLegend meta={meta} /></div>
       <p className="mt-2 text-xs text-slate-500" aria-live="polite">Showing {board.rows.length} of {board.allRowCount} rooms.</p>
 
       {board.rows.length === 0 ? (
@@ -170,13 +173,13 @@ export default async function Dashboard({ searchParams }: PageProps<"/app/dashbo
       ) : view === "grid" ? (
         <ul className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {board.rows.map((r) => (
-            <li key={r.roomId} className={`rounded-lg border-2 p-3 ${STATUS_META[r.status].cell}`}>
+            <li key={r.roomId} className={`rounded-lg border-2 p-3 ${meta[r.status].cell}`}>
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <div className="text-lg font-semibold">Room {r.number}</div>
                   <div className="text-xs text-slate-600">{r.roomType}{r.floor !== null ? ` · Floor ${r.floor}` : ""}</div>
                 </div>
-                <RoomStatusChip status={r.status} />
+                <RoomStatusChip status={r.status} meta={meta} />
               </div>
               <div className="mt-2 text-sm">{r.stay?.guest ?? (r.stay ? "Guest" : "—")}</div>
               <div className="text-xs text-slate-600"><Checkout row={r} time={board.checkOutTime} /></div>
@@ -205,7 +208,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/app/dashbo
                   <td className="font-mono text-xs">{r.stay?.reference ?? "—"}</td>
                   <td>{r.stay ? shortDate(r.stay.arrival) : "—"}</td>
                   <td className="whitespace-nowrap"><Checkout row={r} time={board.checkOutTime} /></td>
-                  <td><RoomStatusChip status={r.status} /></td>
+                  <td><RoomStatusChip status={r.status} meta={meta} /></td>
                   <td><Badge value={r.housekeeping} /></td>
                   <td>{r.paymentStatus ? r.paymentStatus.replaceAll("_", " ").toLowerCase() : "—"}</td>
                   <td className="whitespace-nowrap">{r.balanceMinor === null ? "—" : inr(r.balanceMinor)}</td>

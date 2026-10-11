@@ -27,6 +27,7 @@ export const PERMISSIONS = [
   "subscription.manage",
   "backup.configure",
   "settings.manage",
+  "settings.view",
   "feedback.view",
   "feedback.manage",
   "billing.view",
@@ -128,7 +129,7 @@ export const ROLE_PERMISSIONS: Record<RoleKey, readonly Permission[]> = {
   HOUSEKEEPING: ["rooms.view", "housekeeping.view", "housekeeping.update"],
   MAINTENANCE: ["rooms.view", "maintenance.manage", "rooms.block", "rooms.resolve"],
   REVENUE_MANAGER: ["reservations.view", "rooms.view", "rates.manage", "finance.view", "reports.export", "billing.view"],
-  AUDITOR: ["reservations.view", "guests.view", "rooms.view", "finance.view", "audit.view", "billing.view", "accounting.view", "feedback.view"],
+  AUDITOR: ["reservations.view", "guests.view", "rooms.view", "finance.view", "audit.view", "billing.view", "accounting.view", "feedback.view", "settings.view"],
 };
 
 export function roleHasPermission(

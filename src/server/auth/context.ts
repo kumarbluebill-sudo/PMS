@@ -15,7 +15,7 @@ export type Ctx = {
   emailVerified: boolean;
 };
 
-const ALL_PROPERTY_ROLES: RoleKey[] = ["HOTEL_OWNER", "GROUP_ADMIN", "GENERAL_MANAGER"];
+export const ALL_PROPERTY_ROLES: RoleKey[] = ["HOTEL_OWNER", "GROUP_ADMIN", "GENERAL_MANAGER"];
 
 /**
  * Builds the request context from server-validated facts only:
