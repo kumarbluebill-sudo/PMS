@@ -14,7 +14,8 @@ import { createBooking } from "@/server/services/booking";
 import { rupeesToMinor } from "@/server/money";
 import { sendVerification } from "@/server/services/accounts";
 import { createRoom, createRoomType, setRoomFloor } from "@/server/services/rooms";
-import { assignRoomFloor, createBuilding, createFloor, reorder, setBuildingActive, setFloorActive } from "@/server/services/structure";
+import { assignRoomFloor, createBuilding, createFloor, placeRoom, reorder, setBuildingActive, setFloorActive } from "@/server/services/structure";
+import { completeOnboarding, saveStep } from "@/server/services/onboarding";
 import { createGuest } from "@/server/services/guests";
 import { cancelReservation, checkIn, checkOut, confirmReservation, markNoShow } from "@/server/services/reservations";
 import { createMaintenanceRequest, setRoomStatus } from "@/server/services/housekeeping";
@@ -230,4 +231,28 @@ export async function maintenanceAction(fd: FormData) {
       roomId: str(fd.get("roomId")), title: str(fd.get("title")), blocksRoom: fd.get("blocksRoom") === "on",
     }),
   );
+}
+
+export async function placeRoomAction(fd: FormData) {
+  const ctx = await getCtx();
+  const floorId = str(fd.get("floorId"));
+  const x = str(fd.get("x")).trim();
+  const y = str(fd.get("y")).trim();
+  const clear = str(fd.get("clear")) === "1";
+  await run(`/app/rooms/plan?floor=${encodeURIComponent(floorId)}`, () =>
+    placeRoom(getDb(), ctx, { roomId: str(fd.get("roomId")), x: clear || x === "" ? null : Number(x) - 1, y: clear || y === "" ? null : Number(y) - 1 }),
+  );
+}
+
+export async function wizardStepAction(fd: FormData) {
+  const ctx = await getCtx();
+  const step = Number(str(fd.get("step")));
+  await run("/onboarding", () => saveStep(getDb(), ctx, step), false);
+  redirect(`/onboarding?step=${step}`);
+}
+
+export async function wizardFinishAction() {
+  const ctx = await getCtx();
+  await run("/onboarding?step=5", () => completeOnboarding(getDb(), ctx));
+  redirect("/app/dashboard");
 }

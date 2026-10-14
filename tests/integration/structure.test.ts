@@ -83,3 +83,59 @@ describe("buildings and floors", () => {
     await expect(createBuilding(app, housekeeper, { name: "Nope" })).rejects.toThrow();
   });
 });
+
+describe("floor plan and import", () => {
+  it("places rooms one per cell and rejects out-of-grid coordinates", async () => {
+    const { placeRoom, getFloorPlan } = await import("@/server/services/structure");
+    const b = await createBuilding(app, owner, { name: "Plan Block" });
+    const f = await createFloor(app, owner, { buildingId: b.id, label: "P1", level: 1 });
+    const rt = await createRoomType(app, owner, { name: "PlanType" });
+    const r1 = await createRoom(app, owner, { roomTypeId: rt.id, number: "P101", floorId: f.id });
+    const r2 = await createRoom(app, owner, { roomTypeId: rt.id, number: "P102", floorId: f.id });
+    await placeRoom(app, owner, { roomId: r1.id, x: 0, y: 0 });
+    await expect(placeRoom(app, owner, { roomId: r2.id, x: 0, y: 0 })).rejects.toThrow(/already in that cell/);
+    await expect(placeRoom(app, owner, { roomId: r2.id, x: 99, y: 0 })).rejects.toThrow();
+    await placeRoom(app, owner, { roomId: r2.id, x: 1, y: 0 });
+    await placeRoom(app, owner, { roomId: r1.id, x: null, y: null });
+    const plan = await getFloorPlan(app, owner, f.id);
+    expect(plan.rooms.find((r) => r.id === r1.id)!.layoutX).toBeNull();
+    // a room without a floor cannot be placed
+    const loose = await createRoom(app, owner, { roomTypeId: rt.id, number: "P900" });
+    await expect(placeRoom(app, owner, { roomId: loose.id, x: 2, y: 2 })).rejects.toThrow(/floor first/);
+  });
+
+  it("imports all-or-nothing with row-level errors", async () => {
+    const { commitImport, previewImport } = await import("@/server/services/roomImport");
+    const b = await createBuilding(app, owner, { name: "Import Block" });
+    await createFloor(app, owner, { buildingId: b.id, label: "I1", level: 1 });
+    await createRoomType(app, owner, { name: "ImpType" });
+    const head = ["room_number", "category", "building", "floor"];
+    const bad = [head, ["I101", "ImpType", "Import Block", "I1"], ["I102", "Nope", "Import Block", "I1"]];
+    const p = await previewImport(app, owner, bad);
+    expect(p.errors).toEqual([{ line: 3, message: 'Unknown category "Nope".' }]);
+    await expect(commitImport(app, owner, bad)).rejects.toThrow(/Fix 1 error/);
+    expect((await app.$transaction(async (tx) => { await tx.$executeRaw`SELECT set_config('app.tenant_id', ${owner.tenantId}, true)`; return tx.room.count({ where: { number: "I101" } }); }))).toBe(0);
+    const good = [head, ["I101", "ImpType", "Import Block", "I1"], ["I102", "imptype", "", ""]];
+    expect((await commitImport(app, owner, good)).created).toBe(2);
+    await expect(commitImport(app, owner, good)).rejects.toThrow();
+  });
+});
+
+describe("onboarding wizard", () => {
+  it("saves progress, resumes, and only completes with categories and rooms", async () => {
+    const { getOnboarding, saveStep, completeOnboarding } = await import("@/server/services/onboarding");
+    const fresh = await tenant("wiz");
+    expect((await getOnboarding(app, fresh)).state.step).toBe(0);
+    await saveStep(app, fresh, 3);
+    expect((await getOnboarding(app, fresh)).state.step).toBe(3);
+    await expect(saveStep(app, fresh, 9)).rejects.toThrow();
+    await expect(completeOnboarding(app, fresh)).rejects.toThrow(/room category/);
+    const rt = await createRoomType(app, fresh, { name: "W" });
+    await expect(completeOnboarding(app, fresh)).rejects.toThrow(/at least one room/);
+    await createRoom(app, fresh, { roomTypeId: rt.id, number: "1" });
+    await completeOnboarding(app, fresh);
+    expect((await getOnboarding(app, fresh)).state.completedAt).not.toBeNull();
+    // another tenant has its own state
+    expect((await getOnboarding(app, other)).state.completedAt).toBeNull();
+  });
+});

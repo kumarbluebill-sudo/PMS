@@ -59,6 +59,51 @@ function Checkout({ row, time }: { row: BoardRow; time: string }) {
   return <>{shortDate(s.departure)}, {time}</>;
 }
 
+function FloorPlanView({ rows, meta }: { rows: BoardRow[]; meta: StatusMeta }) {
+  const groups = new Map<string, BoardRow[]>();
+  for (const r of rows) {
+    const k = r.location ?? "Unassigned";
+    groups.set(k, [...(groups.get(k) ?? []), r]);
+  }
+  return (
+    <div className="mt-3 space-y-4">
+      {[...groups.entries()].map(([name, list]) => {
+        const placed = list.filter((r) => r.layoutX !== null);
+        const loose = list.filter((r) => r.layoutX === null);
+        const cols = Math.max(1, ...placed.map((r) => r.layoutX! + 1));
+        return (
+          <section key={name} aria-label={name} className="rounded-lg border border-slate-200 bg-white p-3">
+            <h3 className="mb-2 text-sm font-semibold">{name}</h3>
+            {placed.length > 0 && (
+              <div className="overflow-x-auto">
+                <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${cols}, minmax(5.5rem, 1fr))` }}>
+                  {placed.map((r) => (
+                    <div key={r.roomId} style={{ gridColumn: r.layoutX! + 1, gridRow: r.layoutY! + 1 }} className={`rounded border-2 p-1 text-xs ${meta[r.status].cell}`}>
+                      <strong>{r.number}</strong> <span className="text-slate-600">{r.roomType}</span>
+                      <RoomStatusChip status={r.status} meta={meta} />
+                      {r.stay?.guest && <span className="block truncate">{r.stay.guest}</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {loose.length > 0 && (
+              <ul className="mt-2 flex flex-wrap gap-2">
+                {loose.map((r) => (
+                  <li key={r.roomId} className={`rounded border-2 p-1 text-xs ${meta[r.status].cell}`}>
+                    <strong>{r.number}</strong> <RoomStatusChip status={r.status} meta={meta} />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        );
+      })}
+      <p className="text-xs text-slate-500">Rooms without a grid position are listed under their floor. Arrange tiles in <Link className="underline" href="/app/rooms/plan">Rooms › Floor plan</Link>.</p>
+    </div>
+  );
+}
+
 export default async function Dashboard({ searchParams }: PageProps<"/app/dashboard">) {
   const sp = await searchParams;
   const ctx = await getCtx();
@@ -67,6 +112,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/app/dashbo
   const rawFloor = one(sp.floor);
   const board = await roomBoard(getDb(), ctx, {
     date: rawDate && DAY.test(rawDate) ? rawDate : undefined,
+    buildingId: one(sp.building) && /^[0-9a-f-]{36}$/i.test(one(sp.building)!) ? one(sp.building) : undefined,
     floor: rawFloor && /^-?\d{1,3}$/.test(rawFloor) ? Number(rawFloor) : undefined,
     roomTypeId: one(sp.type) && /^[0-9a-f-]{36}$/i.test(one(sp.type)!) ? one(sp.type) : undefined,
     status: rawStatus && (DISPLAY_STATUSES as readonly string[]).includes(rawStatus) ? (rawStatus as DisplayStatus) : undefined,
@@ -77,7 +123,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/app/dashbo
   });
   const alerts = await complaintAlerts(getDb(), ctx);
   const meta: StatusMeta = resolveStatusMeta((await settingsFor(getDb(), ctx))["rooms.statusLabels"]);
-  const view = one(sp.view) === "grid" ? "grid" : "table";
+  const view = one(sp.view) === "grid" ? "grid" : one(sp.view) === "plan" ? "plan" : "table";
   const c = board.cards;
   const qs = new URLSearchParams();
   for (const [k, v] of Object.entries(sp)) if (typeof v === "string" && v && k !== "error" && k !== "ok") qs.set(k, v);
@@ -138,6 +184,14 @@ export default async function Dashboard({ searchParams }: PageProps<"/app/dashbo
             {board.roomTypes.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
         </label>
+        {board.buildings.length > 0 && (
+          <label className="text-xs text-slate-600">Building
+            <select name="building" defaultValue={one(sp.building) ?? ""} className={input}>
+              <option value="">All</option>
+              {board.buildings.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
+          </label>
+        )}
         <label className="text-xs text-slate-600">Floor
           <select name="floor" defaultValue={rawFloor ?? ""} className={input}>
             <option value="">All</option>
@@ -159,6 +213,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/app/dashbo
           <span className="mx-2 text-xs text-slate-500">View:</span>
           <Link href={`/app/dashboard?${new URLSearchParams({ ...Object.fromEntries(qs), view: "table" })}`} className={btnGhost} aria-current={view === "table"}>Table</Link>
           <Link href={`/app/dashboard?${new URLSearchParams({ ...Object.fromEntries(qs), view: "grid" })}`} className={btnGhost} aria-current={view === "grid"}>Grid</Link>
+          <Link href={`/app/dashboard?${new URLSearchParams({ ...Object.fromEntries(qs), view: "plan" })}`} className={btnGhost} aria-current={view === "plan"}>Floor plan</Link>
           {canExport && <a href={`/app/dashboard/export?${qs}`} className={btnGhost}>Export CSV</a>}
         </div>
       </form>
@@ -170,6 +225,8 @@ export default async function Dashboard({ searchParams }: PageProps<"/app/dashbo
         <p className="mt-4 rounded-md border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
           {board.allRowCount === 0 ? <>No rooms are configured yet. <Link className="underline" href="/app/rooms">Add rooms</Link>.</> : "No rooms match these filters."}
         </p>
+      ) : view === "plan" ? (
+        <FloorPlanView rows={board.rows} meta={meta} />
       ) : view === "grid" ? (
         <ul className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {board.rows.map((r) => (

@@ -20,6 +20,7 @@ const iso = (d: Date) => d.toISOString().slice(0, 10);
 export const boardFilterSchema = z.object({
   date: day.optional(),
   floor: z.number().int().min(-5).max(200).optional(),
+  buildingId: z.string().uuid().optional(),
   roomTypeId: z.string().uuid().optional(),
   status: z.enum(DISPLAY_STATUSES).optional(),
   q: z.string().trim().max(80).optional(),
@@ -46,6 +47,12 @@ export type BoardRow = {
   roomId: string;
   number: string;
   floor: number | null;
+  buildingId: string | null;
+  floorId: string | null;
+  /** "Building – Floor" when the room is assigned to a floor. */
+  location: string | null;
+  layoutX: number | null;
+  layoutY: number | null;
   roomTypeId: string;
   roomType: string;
   housekeeping: string;
@@ -98,11 +105,12 @@ export async function roomBoard(db: PrismaClient, ctx: Ctx, input: BoardFilter =
     const date = f.date ?? today;
     const live = date === today;
 
-    const allRooms = await tx.room.findMany({ where: { propertyId }, include: { roomType: true } });
+    const allRooms = await tx.room.findMany({ where: { propertyId }, include: { roomType: true, building: true, floorRef: true } });
+    const buildings = [...new Map(allRooms.filter((r) => r.building).map((r) => [r.building!.id, r.building!.name])).entries()].map(([id, name]) => ({ id, name }));
     const floors = [...new Set(allRooms.map((r) => r.floor).filter((x): x is number => x !== null))].sort((a, b) => a - b);
     const roomTypes = [...new Map(allRooms.map((r) => [r.roomTypeId, r.roomType.name])).entries()].map(([id, name]) => ({ id, name }));
     const scope = allRooms
-      .filter((r) => (f.floor === undefined || r.floor === f.floor) && (!f.roomTypeId || r.roomTypeId === f.roomTypeId))
+      .filter((r) => (f.floor === undefined || r.floor === f.floor) && (!f.buildingId || r.buildingId === f.buildingId) && (!f.roomTypeId || r.roomTypeId === f.roomTypeId))
       .sort((a, b) => natural(a.number, b.number));
     const scopeIds = new Set(scope.map((r) => r.id));
 
@@ -209,6 +217,11 @@ export async function roomBoard(db: PrismaClient, ctx: Ctx, input: BoardFilter =
         roomId: room.id,
         number: room.number,
         floor: room.floor,
+        buildingId: room.buildingId,
+        floorId: room.floorId,
+        location: room.building && room.floorRef ? `${room.building.name} – ${room.floorRef.label}` : null,
+        layoutX: room.layoutX,
+        layoutY: room.layoutY,
         roomTypeId: room.roomTypeId,
         roomType: room.roomType.name,
         housekeeping: room.housekeeping,
@@ -286,6 +299,6 @@ export async function roomBoard(db: PrismaClient, ctx: Ctx, input: BoardFilter =
     } else if (f.sort === "status") {
       view = view.slice().sort((a, b) => (STATUS_ORDER.get(a.status)! - STATUS_ORDER.get(b.status)!) || natural(a.number, b.number));
     }
-    return { date, today, live, checkOutTime: property.checkOutTime, floors, roomTypes, cards, rows: view, allRowCount: rows.length };
+    return { date, today, live, checkOutTime: property.checkOutTime, floors, buildings, roomTypes, cards, rows: view, allRowCount: rows.length };
   });
 }

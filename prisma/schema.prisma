@@ -779,3 +779,17 @@ model JournalLine {
   @@index([tenantId, accountId])
   @@map("journal_lines")
 }
+
+/// Saved progress of the setup wizard so it can be resumed.
+model OnboardingState {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @db.Uuid
+  propertyId  String    @unique @db.Uuid
+  step        Int       @default(0)
+  data        Json      @default("{}")
+  completedAt DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  @@index([tenantId])
+  @@map("onboarding_states")
+}

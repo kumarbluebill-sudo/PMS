@@ -130,3 +130,46 @@ export async function assignRoomFloor(db: PrismaClient, ctx: Ctx, roomId: string
     await audit(tx, ctx, { action: "room.assignFloor", entityType: "Room", entityId: room.id, before: { floorId: room.floorId }, after: { floorId } });
   });
 }
+
+export const GRID_COLS = 12;
+export const GRID_ROWS = 8;
+
+export async function getFloorPlan(db: PrismaClient, ctx: Ctx, floorId: string) {
+  authorize(ctx, "rooms.view");
+  const propertyId = requireProperty(ctx);
+  return withTenant(db, ctx.tenantId, async (tx) => {
+    const floor = await tx.floor.findFirst({ where: { id: floorId, propertyId }, include: { building: true } });
+    if (!floor) throw new AppError("NOT_FOUND", "Floor not found.");
+    const rooms = await tx.room.findMany({
+      where: { propertyId, floorId },
+      include: { roomType: { select: { name: true } } },
+      orderBy: { number: "asc" },
+    });
+    return { floor, rooms };
+  });
+}
+
+/** Places a room on its floor's grid, or removes it from the plan when x/y are null. One room per cell. */
+export async function placeRoom(db: PrismaClient, ctx: Ctx, input: unknown) {
+  authorize(ctx, "rooms.manage");
+  const propertyId = requireProperty(ctx);
+  const d = z
+    .object({
+      roomId: z.string().uuid(),
+      x: z.number().int().min(0).max(GRID_COLS - 1).nullable(),
+      y: z.number().int().min(0).max(GRID_ROWS - 1).nullable(),
+    })
+    .refine((v) => (v.x === null) === (v.y === null), "Set both column and row.")
+    .parse(input);
+  return withTenant(db, ctx.tenantId, async (tx) => {
+    const room = await tx.room.findFirst({ where: { id: d.roomId, propertyId } });
+    if (!room) throw new AppError("NOT_FOUND", "Room not found.");
+    if (!room.floorId) throw new AppError("VALIDATION", "Assign the room to a floor first.");
+    if (d.x !== null) {
+      const clash = await tx.room.findFirst({ where: { floorId: room.floorId, layoutX: d.x, layoutY: d.y, id: { not: room.id } } });
+      if (clash) throw new AppError("CONFLICT", `Room ${clash.number} is already in that cell.`);
+    }
+    await tx.room.update({ where: { id: room.id }, data: { layoutX: d.x, layoutY: d.y } });
+    await audit(tx, ctx, { action: "room.place", entityType: "Room", entityId: room.id, before: { x: room.layoutX, y: room.layoutY }, after: { x: d.x, y: d.y } });
+  });
+}

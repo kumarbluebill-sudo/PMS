@@ -12,7 +12,8 @@ export default async function Rooms({ searchParams }: PageProps<"/app/rooms">) {
   const floorOptions = buildings.flatMap((b) => b.floors.filter((f) => f.active).map((f) => ({ id: f.id, label: `${b.name} – ${f.label}` })));
   return (
     <>
-      <PageHeader title="Rooms" />
+      <PageHeader title="Rooms" subtitle="Add rooms one by one, or import many from a file." />
+      <p className="mb-3 text-sm"><a className="text-indigo-700 underline" href="/app/rooms/import">Import rooms from CSV / Excel</a> · <a className="text-indigo-700 underline" href="/app/rooms/plan">Floor plan</a></p>
       <ErrorBanner message={typeof error === "string" ? error : undefined} />
       <div className="grid gap-4 md:grid-cols-2">
         <Card title="Add room">
