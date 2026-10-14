@@ -1,9 +1,11 @@
+import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { Card, PageHeader } from "@/app/ui";
 import ImportForm from "./ImportForm";
 
 export default function ImportRooms() {
   return (
     <>
+      <Breadcrumbs items={[{ label: "Rooms", href: "/app/rooms" }, { label: "Import" }]} />
       <PageHeader title="Import rooms" subtitle="Upload a CSV or Excel file. Every row is checked first; nothing is saved unless all rows are valid." />
       <div className="grid gap-4 md:grid-cols-2">
         <Card title="Upload">

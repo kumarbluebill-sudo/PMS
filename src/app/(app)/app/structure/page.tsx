@@ -1,3 +1,4 @@
+import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { addBuildingAction, addFloorAction, structureReorderAction, structureToggleAction } from "@/app/actions";
 import { btn, btnGhost, Card, ErrorBanner, Field, input, PageHeader } from "@/app/ui";
 import { getDb } from "@/server/db/client";
@@ -31,6 +32,7 @@ export default async function Structure({ searchParams }: PageProps<"/app/struct
   const buildings = await listStructure(getDb(), await getCtx());
   return (
     <>
+      <Breadcrumbs items={[{ label: "Rooms", href: "/app/rooms" }, { label: "Buildings & floors" }]} />
       <PageHeader title="Buildings & floors" />
       <ErrorBanner message={typeof error === "string" ? error : undefined} />
       <div className="grid gap-4 md:grid-cols-2">

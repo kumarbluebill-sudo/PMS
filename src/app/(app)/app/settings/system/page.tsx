@@ -3,6 +3,7 @@ import { Card, PageHeader } from "@/app/ui";
 import { roleHasPermission } from "@/server/auth/permissions";
 import { getDb } from "@/server/db/client";
 import { getCtx } from "@/server/session";
+import { twilioConfig } from "@/server/messaging/provider";
 import pkg from "../../../../../../package.json";
 
 type Mig = { migration_name: string; finished_at: Date | null; rolled_back_at: Date | null };
@@ -30,7 +31,10 @@ export default async function SystemSettings() {
             <dt className="text-slate-500">Database</dt><dd>{dbOk ? "Reachable" : "Not reachable"}</dd>
             <dt className="text-slate-500">Database migrations</dt>
             <dd>{migrations.length === 0 ? "Not visible to the application" : unfinished ? `${unfinished} not finished: needs attention` : `${migrations.length}+ applied, latest ${migrations[0].migration_name}`}</dd>
-            <dt className="text-slate-500">Integrations</dt><dd>None connected (email, channels and payment gateways are not built yet)</dd>
+            <dt className="text-slate-500">WhatsApp (Twilio)</dt>
+            <dd>{twilioConfig() ? "Credentials configured. Use the WhatsApp page to send a message and confirm delivery." : "Not configured: running in test mode (nothing is delivered)."}</dd>
+            <dt className="text-slate-500">Logo / file storage</dt><dd>{process.env.SUPABASE_SERVICE_ROLE_KEY ? "Configured" : "Not configured (logo uses a web address)"}</dd>
+            <dt className="text-slate-500">Email, channel manager, payment gateway</dt><dd>Not built yet</dd>
             <dt className="text-slate-500">Error reports</dt><dd>Not collected in the app. Check the hosting provider&apos;s logs.</dd>
           </dl>
         </Card>

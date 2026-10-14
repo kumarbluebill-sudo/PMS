@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
+import ViewMemory from "./ViewMemory";
 import { roomStatusAction } from "@/app/actions";
 import { Badge, btn, btnGhost, Card, ErrorBanner, inr, input, PageHeader } from "@/app/ui";
 import { roleHasPermission } from "@/server/auth/permissions";
@@ -123,7 +125,9 @@ export default async function Dashboard({ searchParams }: PageProps<"/app/dashbo
   });
   const alerts = await complaintAlerts(getDb(), ctx);
   const meta: StatusMeta = resolveStatusMeta((await settingsFor(getDb(), ctx))["rooms.statusLabels"]);
-  const view = one(sp.view) === "grid" ? "grid" : one(sp.view) === "plan" ? "plan" : "table";
+  const remembered = (await cookies()).get("pms_dash_view")?.value;
+  const pick = one(sp.view) ?? remembered;
+  const view: "table" | "grid" | "plan" = pick === "grid" ? "grid" : pick === "plan" ? "plan" : "table";
   const c = board.cards;
   const qs = new URLSearchParams();
   for (const [k, v] of Object.entries(sp)) if (typeof v === "string" && v && k !== "error" && k !== "ok") qs.set(k, v);
@@ -149,6 +153,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/app/dashbo
         title="Room board"
         subtitle={board.live ? `Live status for ${board.date}` : `Projected for ${board.date} (housekeeping state shown for today only)`}
       />
+      <ViewMemory view={view} />
       <ErrorBanner message={typeof sp.error === "string" ? sp.error : undefined} />
 
       {alerts.open > 0 && (

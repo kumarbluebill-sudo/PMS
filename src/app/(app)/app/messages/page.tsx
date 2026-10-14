@@ -1,3 +1,4 @@
+import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { retryMessageAction, saveTemplateAction } from "./actions";
 import { Badge, btn, btnGhost, Card, ErrorBanner, Field, input, PageHeader } from "@/app/ui";
 import { roleHasPermission } from "@/server/auth/permissions";
@@ -18,6 +19,7 @@ export default async function Messages({ searchParams }: PageProps<"/app/message
   const st = messagingStatus();
   return (
     <>
+      <Breadcrumbs items={[{ label: "Guests" }, { label: "WhatsApp" }]} />
       <PageHeader title="WhatsApp messages" subtitle="Templates, consent and delivery status" />
       <ErrorBanner message={typeof sp.error === "string" ? sp.error : undefined} />
       {typeof sp.ok === "string" && <p role="status" className="mb-3 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">{sp.ok}</p>}

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { placeRoomAction } from "@/app/actions";
 import { btn, btnGhost, Card, ErrorBanner, PageHeader } from "@/app/ui";
 import { getDb } from "@/server/db/client";
@@ -20,6 +21,7 @@ export default async function FloorPlan({ searchParams }: PageProps<"/app/rooms/
 
   return (
     <>
+      <Breadcrumbs items={[{ label: "Rooms", href: "/app/rooms" }, { label: "Floor plan" }]} />
       <PageHeader title="Floor plan" subtitle="Arrange room tiles on a grid. Use the controls under the grid to place or move a room." />
       <ErrorBanner message={error} />
       {floors.length === 0 ? (

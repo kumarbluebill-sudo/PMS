@@ -10,6 +10,8 @@ export const SETTINGS_NAV: { href: string; label: string; perm: Permission }[] =
   { href: "/app/settings/billing", label: "Billing & invoices", perm: "settings.view" },
   { href: "/app/settings/tax", label: "GST & tax", perm: "tax.manage" },
   { href: "/app/settings/security", label: "Users & security", perm: "settings.view" },
+  { href: "/app/settings/permissions", label: "Roles & permissions", perm: "settings.view" },
+  { href: "/app/messages", label: "WhatsApp", perm: "guests.view" },
   { href: "/app/settings/notifications", label: "Notifications", perm: "settings.view" },
   { href: "/app/settings/channels", label: "Channel manager", perm: "settings.view" },
   { href: "/app/settings/reports", label: "Reports", perm: "settings.view" },

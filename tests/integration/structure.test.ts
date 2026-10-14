@@ -139,3 +139,18 @@ describe("onboarding wizard", () => {
     expect((await getOnboarding(app, other)).state.completedAt).toBeNull();
   });
 });
+
+describe("row level security on new tables", () => {
+  it("hides one tenant's rows from another at the database level", async () => {
+    const { withTenant } = await import("@/server/db/withTenant");
+    const tables = ["buildings", "floors", "onboarding_states", "message_templates", "guest_consents", "message_logs"];
+    for (const t of tables) {
+      const mine = await withTenant(app, owner.tenantId, (tx) => tx.$queryRawUnsafe<{ n: bigint }[]>(`SELECT count(*) AS n FROM ${t}`));
+      const theirs = await withTenant(app, other.tenantId, (tx) => tx.$queryRawUnsafe<{ n: bigint }[]>(`SELECT count(*) AS n FROM ${t} WHERE "tenantId" = '${owner.tenantId}'`));
+      expect(Number(theirs[0].n), t).toBe(0);
+      if (t === "buildings") expect(Number(mine[0].n)).toBeGreaterThan(0);
+    }
+    // writing a row for another tenant is rejected by the policy
+    await expect(withTenant(app, other.tenantId, (tx) => tx.building.create({ data: { tenantId: owner.tenantId, propertyId: owner.propertyId!, name: "Sneaky" } }))).rejects.toThrow();
+  });
+});
