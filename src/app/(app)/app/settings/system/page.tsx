@@ -26,7 +26,7 @@ export default async function SystemSettings() {
       <PageHeader title="System & audit" subtitle="Application health and the audit trail." />
       <div className="space-y-4">
         <Card title="Health">
-          <dl className="grid grid-cols-[12rem_1fr] gap-y-1 text-sm">
+          <dl className="grid grid-cols-1 gap-y-1 text-sm sm:grid-cols-[12rem_1fr] [&_dd]:mb-2 [&_dd]:break-words sm:[&_dd]:mb-0">
             <dt className="text-slate-500">Application version</dt><dd>{pkg.version}</dd>
             <dt className="text-slate-500">Database</dt><dd>{dbOk ? "Reachable" : "Not reachable"}</dd>
             <dt className="text-slate-500">Database migrations</dt>

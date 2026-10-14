@@ -60,3 +60,31 @@ Phase A notes: "Available rooms" counts rooms physically free now, including roo
 
 ## Not started (later phases)
 Reports/analytics, rates & restrictions, channel manager, booking engine, SaaS billing/platform admin, backups dashboard, PWA, help center, deployment.
+
+## Upgrade 2026-10-14: structure, planner, wizard, documents, WhatsApp, UX shell
+Verified by Vitest (248 tests, 27 files) and Playwright (4 tests incl. every new page at 390/768 px and an axe scan); migrations `20261014100000_structure`, `20261014110000_planner_onboarding`, `20261014120000_whatsapp`.
+
+| Area | Status | Notes |
+|---|---|---|
+| Buildings and floors (add, reorder, deactivate, never delete) | Done | `/app/structure`; legacy `Room.floor` kept in sync; existing rooms backfilled into "Main Building" |
+| Room categories: description, bed configuration, amenities | Done | `/app/room-types` |
+| Floor plan: grid placement, one room per cell, keyboard/number inputs (no drag-and-drop) | Done | `/app/rooms/plan`; dashboard "Floor plan" view and building filter |
+| Room import from CSV and Excel (.xlsx), template, row-level errors, all-or-nothing | Done | `/app/rooms/import` |
+| Setup wizard with saved progress, review and confirm | Done | `/onboarding`; `onboarding_states` |
+| Document designer: header, payment instructions, signature line, receipt layout (A4 / 80 mm), preview | Done | Settings > Billing |
+| Receipt and advance receipt PDFs | Done | `/app/payments/[id]/pdf`; advance = payment taken before arrival and check-in |
+| WhatsApp via Twilio: consent, 8 templates, log, retry, signed delivery webhook, test mode | Done | `/app/messages`; **never reports "sent" without provider acceptance** |
+| Skeleton loading, breadcrumbs, reduced motion, focus ring, remembered dashboard view, roles matrix, integration health | Done | cookie `pms_dash_view` (this device only) |
+
+### Limits of this upgrade (honest list)
+- **Logo upload / Supabase Storage is not built.** The logo is still an https address (`general.logoUrl`). The system page reports storage as "Not configured".
+- **PDFs still print "Rs." and cannot show non-Latin text** (standard PDF fonts; no Unicode font embedded). No folio PDF; the folio has a print page.
+- **WhatsApp is manual-send only.** There is no scheduled job for pre-arrival or checkout reminders, and no automatic send on booking events. Real delivery needs a Twilio account, a WhatsApp sender, and Meta-approved templates (paste each template's Content SID). Credentials are server environment variables (one Twilio account for the deployment), not per hotel. Repeat messages for the same booking are blocked except payment and checkout reminders, which are allowed once per day.
+- Drag-and-drop floor layout is not built; placement uses column/row inputs.
+- Room numbers stay unique per property (not per building).
+- Dashboard preferences are stored in a cookie, not per user in the database.
+- GST rules remain unreviewed by a qualified professional (`docs/GST_COMPLIANCE.md`).
+- Roles matrix is read-only; per-member extra permissions are unchanged.
+
+### New environment variables (all optional)
+`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM` (WhatsApp-enabled sender, e.g. `+14155238886`). Without all three the app runs in test mode. Set the Twilio status-callback to nothing: the app sends its own callback URL (`$AUTH_URL/api/webhooks/twilio?t=<tenant>`) with each message, so `AUTH_URL` must be the public https address.

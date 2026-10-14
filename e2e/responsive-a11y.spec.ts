@@ -12,7 +12,8 @@ const PAGES = [
   "/app/rooms", "/app/room-types", "/app/housekeeping", "/app/maintenance", "/app/feedback", "/app/users", "/app/audit-logs",
   "/app/settings/general", "/app/settings/property", "/app/settings/reservations", "/app/settings/rooms", "/app/settings/billing",
   "/app/settings/tax", "/app/settings/security", "/app/settings/notifications", "/app/settings/channels", "/app/settings/reports",
-  "/app/settings/backup", "/app/settings/subscription", "/app/settings/system",
+  "/app/settings/backup", "/app/settings/subscription", "/app/settings/system", "/app/settings/permissions", "/app/structure",
+  "/app/rooms/plan", "/app/rooms/import", "/app/messages", "/onboarding",
 ];
 
 async function signUp(page: Page) {

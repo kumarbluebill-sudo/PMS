@@ -14,13 +14,13 @@ export default async function PermissionsMatrix() {
       <Breadcrumbs items={[{ label: "Settings", href: "/app/settings" }, { label: "Roles and permissions" }]} />
       <PageHeader title="Roles and permissions" subtitle="What each role can do. Access is enforced on the server for every action; changing a person's role is done under Users." />
       <Card>
-        <div className="overflow-x-auto">
+        <div className="relative overflow-x-auto" tabIndex={0} role="region" aria-label="Permissions by role table">
           <table className="w-full text-left text-xs">
             <caption className="sr-only">Permissions by role</caption>
             <thead>
               <tr>
                 <th scope="col" className="sticky left-0 bg-white p-1">Permission</th>
-                {TENANT_ROLES.map((r) => <th key={r} scope="col" className="p-1 align-bottom"><span className="[writing-mode:vertical-rl]">{r.replaceAll("_", " ").toLowerCase()}</span></th>)}
+                {TENANT_ROLES.map((r) => <th key={r} scope="col" className="min-w-20 p-1 align-bottom text-[10px] font-medium">{r.replaceAll("_", " ").toLowerCase()}</th>)}
               </tr>
             </thead>
             <tbody className="divide-y">

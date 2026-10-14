@@ -40,3 +40,6 @@ Migrations run as an admin role. The app connects as `pms_app` (no superuser, no
 
 ## Not yet modelled
 Debit notes, advance receipts, folio transfers, expenses/suppliers, channels, subscriptions, backups, documents, rate plans.
+
+## Added 2026-10-14
+`buildings`, `floors` (deactivate-only; unique name per property / label per building), `rooms.buildingId/floorId/layoutX/layoutY` (unique cell per floor, both coordinates set or both null), `room_types.description/bedConfig/amenities`, `onboarding_states` (one row per property), `message_templates`, `guest_consents` (one per guest and channel, GRANTED or REVOKED), `message_logs` (no message text or full phone number; unique idempotency key per property). All have the same tenant RLS policy and grants to `pms_app`.

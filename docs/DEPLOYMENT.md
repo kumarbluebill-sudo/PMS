@@ -3,7 +3,7 @@
 Targets: GitHub + Vercel + managed PostgreSQL (e.g. Supabase). **Nothing has been deployed yet.**
 
 ## Environment variables
-`DATABASE_URL` (admin, migrations only), `APP_DATABASE_URL` (restricted `pms_app` role, runtime), `AUTH_SECRET`, `AUTH_URL`, `APP_ENCRYPTION_KEY` (32 bytes base64). Never commit `.env`.
+Optional WhatsApp: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM` (see IMPLEMENTATION_STATUS.md). Required: `DATABASE_URL` (admin, migrations only), `APP_DATABASE_URL` (restricted `pms_app` role, runtime), `AUTH_SECRET`, `AUTH_URL`, `APP_ENCRYPTION_KEY` (32 bytes base64). Never commit `.env`.
 
 ## Steps
 1. Create the database. Run reviewed migrations manually: `DATABASE_URL=<admin> npx prisma migrate deploy` (never on app start).
