@@ -1,11 +1,12 @@
 import Link from "next/link";
+import AuthShell from "@/components/AuthShell";
 import { loginAction } from "@/app/actions";
 import { btn, ErrorBanner, Field, input } from "@/app/ui";
 
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const { error, ok } = await searchParams;
   return (
-    <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-4 px-4">
+    <AuthShell>
       <h1 className="text-2xl font-semibold">Sign in</h1>
       <ErrorBanner message={typeof error === "string" ? error : undefined} />
       {typeof ok === "string" && <p role="status" className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">{ok}</p>}
@@ -28,6 +29,6 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
           Create an account
         </Link>
       </p>
-    </main>
+    </AuthShell>
   );
 }

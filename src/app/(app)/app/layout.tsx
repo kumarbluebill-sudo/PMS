@@ -1,4 +1,4 @@
-import Link from "next/link";
+import AppShell, { type NavGroup, type IconName } from "@/components/AppShell";
 import { logoutAction, switchPropertyAction } from "@/app/actions";
 import { resendVerificationAction } from "@/app/account-actions";
 import { getCtx } from "@/server/session";
@@ -6,30 +6,61 @@ import { getDb } from "@/server/db/client";
 import { withTenant } from "@/server/db/withTenant";
 import { roleHasPermission, type Permission } from "@/server/auth/permissions";
 
-const NAV: { href: string; label: string; perm: Permission }[] = [
-  { href: "/app/dashboard", label: "Dashboard", perm: "rooms.view" },
-  { href: "/app/front-desk", label: "Front desk", perm: "frontdesk.checkin" },
-  { href: "/app/reservations", label: "Reservations", perm: "reservations.view" },
-  { href: "/app/reservations/calendar", label: "Calendar", perm: "reservations.view" },
-  { href: "/app/guests", label: "Guests", perm: "guests.view" },
-  { href: "/app/billing", label: "Folios", perm: "billing.view" },
-  { href: "/app/invoices", label: "Invoices", perm: "billing.view" },
-  { href: "/app/credit-notes", label: "Credit notes", perm: "billing.view" },
-  { href: "/app/payments", label: "Payments", perm: "billing.view" },
-  { href: "/app/cashier", label: "Cashier", perm: "cashier.operate" },
-  { href: "/app/invoices/gst-summary", label: "GST summary", perm: "accounting.view" },
-  { href: "/app/accounting", label: "Accounting", perm: "accounting.view" },
-  { href: "/app/rooms", label: "Rooms", perm: "rooms.view" },
-  { href: "/app/structure", label: "Buildings & floors", perm: "rooms.view" },
-  { href: "/app/room-types", label: "Room types", perm: "rooms.view" },
-  { href: "/app/feedback", label: "Feedback", perm: "feedback.view" },
-  { href: "/app/messages", label: "WhatsApp", perm: "guests.view" },
-  { href: "/app/housekeeping", label: "Housekeeping", perm: "housekeeping.view" },
-  { href: "/app/maintenance", label: "Maintenance", perm: "maintenance.manage" },
-  { href: "/app/users", label: "Users", perm: "users.manage" },
-  { href: "/app/settings", label: "Settings", perm: "settings.view" },
-  { href: "/app/settings/tax", label: "GST & tax", perm: "tax.manage" },
-  { href: "/app/audit-logs", label: "Audit log", perm: "audit.view" },
+type Def = { href: string; label: string; perm: Permission; icon: IconName };
+const GROUPS: { label: string; items: Def[] }[] = [
+  {
+    label: "Front desk",
+    items: [
+      { href: "/app/dashboard", label: "Room board", perm: "rooms.view", icon: "home" },
+      { href: "/app/front-desk", label: "Front desk", perm: "frontdesk.checkin", icon: "desk" },
+      { href: "/app/reservations", label: "Reservations", perm: "reservations.view", icon: "list" },
+      { href: "/app/reservations/calendar", label: "Calendar", perm: "reservations.view", icon: "calendar" },
+      { href: "/app/guests", label: "Guests", perm: "guests.view", icon: "users" },
+    ],
+  },
+  {
+    label: "Housekeeping",
+    items: [
+      { href: "/app/housekeeping", label: "Housekeeping", perm: "housekeeping.view", icon: "broom" },
+      { href: "/app/maintenance", label: "Maintenance", perm: "maintenance.manage", icon: "wrench" },
+    ],
+  },
+  {
+    label: "Billing",
+    items: [
+      { href: "/app/billing", label: "Folios", perm: "billing.view", icon: "folio" },
+      { href: "/app/invoices", label: "Invoices", perm: "billing.view", icon: "invoice" },
+      { href: "/app/credit-notes", label: "Credit notes", perm: "billing.view", icon: "credit" },
+      { href: "/app/payments", label: "Payments", perm: "billing.view", icon: "wallet" },
+      { href: "/app/cashier", label: "Cashier", perm: "cashier.operate", icon: "cash" },
+      { href: "/app/invoices/gst-summary", label: "GST summary", perm: "accounting.view", icon: "tax" },
+      { href: "/app/accounting", label: "Accounting", perm: "accounting.view", icon: "chart" },
+      { href: "/app/settings/tax", label: "GST & tax", perm: "tax.manage", icon: "tax" },
+    ],
+  },
+  {
+    label: "Property",
+    items: [
+      { href: "/app/rooms", label: "Rooms", perm: "rooms.view", icon: "bed" },
+      { href: "/app/structure", label: "Buildings & floors", perm: "rooms.view", icon: "building" },
+      { href: "/app/room-types", label: "Room types", perm: "rooms.view", icon: "tag" },
+    ],
+  },
+  {
+    label: "Guest care",
+    items: [
+      { href: "/app/feedback", label: "Feedback", perm: "feedback.view", icon: "star" },
+      { href: "/app/messages", label: "WhatsApp", perm: "guests.view", icon: "chat" },
+    ],
+  },
+  {
+    label: "Admin",
+    items: [
+      { href: "/app/users", label: "Users", perm: "users.manage", icon: "shield" },
+      { href: "/app/audit-logs", label: "Audit log", perm: "audit.view", icon: "list" },
+      { href: "/app/settings", label: "Settings", perm: "settings.view", icon: "settings" },
+    ],
+  },
 ];
 
 export default async function AppLayout({ children }: LayoutProps<"/app">) {
@@ -37,40 +68,47 @@ export default async function AppLayout({ children }: LayoutProps<"/app">) {
   const props = await withTenant(getDb(), ctx.tenantId, (tx) =>
     tx.property.findMany({ where: { id: { in: ctx.accessiblePropertyIds } }, select: { id: true, name: true } }),
   );
-  const nav = NAV.filter((n) => roleHasPermission(ctx.role, n.perm, ctx.extra));
-  return (
-    <div className="min-h-screen md:flex">
-      <aside className="border-b border-slate-200 bg-white p-3 md:w-56 md:border-b-0 md:border-r">
-        <div className="mb-3 text-sm font-semibold">MK Hotel PMS</div>
-        <form action={switchPropertyAction} className="mb-3">
-          <select
-            name="propertyId"
-            defaultValue={ctx.propertyId ?? ""}
-            className="w-full rounded-md border border-slate-300 p-1.5 text-sm"
-            aria-label="Property"
-          >
-            {props.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-          <button className="mt-1 text-xs underline">Switch</button>
-        </form>
-        <nav className="flex flex-wrap gap-1 md:flex-col">
-          {nav.map((n) => (
-            <Link key={n.href} href={n.href} className="rounded-md px-2 py-1.5 text-sm text-slate-700 hover:bg-slate-100">
-              {n.label}
-            </Link>
+  const groups: NavGroup[] = GROUPS.map((g) => ({
+    label: g.label,
+    items: g.items.filter((n) => roleHasPermission(ctx.role, n.perm, ctx.extra)).map(({ href, label, icon }) => ({ href, label, icon })),
+  })).filter((g) => g.items.length > 0);
+  const current = props.find((p) => p.id === ctx.propertyId);
+
+  const brand = (
+    <div>
+      <div className="flex items-center gap-2 text-white">
+        <span aria-hidden className="grid h-8 w-8 place-items-center rounded-md bg-gold-400 text-base font-bold text-brand-950">M</span>
+        <span className="text-sm font-semibold leading-tight">MK Hotel PMS</span>
+      </div>
+      <form action={switchPropertyAction} className="mt-3 flex gap-1.5">
+        <select
+          name="propertyId"
+          defaultValue={ctx.propertyId ?? ""}
+          className="min-w-0 flex-1 rounded-md border border-brand-700 bg-brand-950 px-2 py-1.5 text-sm text-white"
+          aria-label="Property"
+        >
+          {props.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
           ))}
-        </nav>
-        <form action={logoutAction} className="mt-4">
-          <button className="text-xs text-slate-500 underline">
-            Sign out ({ctx.role.toLowerCase().replace("_", " ")})
-          </button>
-        </form>
-      </aside>
-      <main className="min-w-0 flex-1 bg-slate-50 p-4 md:p-6">
+        </select>
+        <button className="rounded-md border border-brand-700 px-2 text-xs text-brand-100 hover:bg-brand-800">Switch</button>
+      </form>
+      {current && props.length > 1 && <p className="mt-1 truncate text-xs text-brand-300">Viewing {current.name}</p>}
+    </div>
+  );
+
+  const footer = (
+    <form action={logoutAction} className="flex items-center justify-between gap-2">
+      <span className="min-w-0 truncate text-xs text-brand-300">{ctx.role.toLowerCase().replaceAll("_", " ")}</span>
+      <button className="rounded-md border border-brand-700 px-2.5 py-1 text-xs text-brand-100 hover:bg-brand-800">Sign out</button>
+    </form>
+  );
+
+  return (
+    <AppShell groups={groups} brand={brand} footer={footer}>
+      <main className="mx-auto w-full max-w-[96rem] bg-page p-4 md:p-6">
         {!ctx.emailVerified && (
           <form action={resendVerificationAction} className="mb-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
             Your email is not verified. <button className="underline">Resend verification email</button>
@@ -78,6 +116,6 @@ export default async function AppLayout({ children }: LayoutProps<"/app">) {
         )}
         {children}
       </main>
-    </div>
+    </AppShell>
   );
 }

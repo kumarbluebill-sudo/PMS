@@ -166,7 +166,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/app/dashbo
           <div key={k} role="listitem">
             <Card>
               <div className="text-xs text-slate-500">{k}</div>
-              <div className="text-2xl font-semibold">{v}</div>
+              <div className="text-2xl font-semibold tabular-nums text-brand-900">{v}</div>
               {hint && <div className="text-[11px] text-slate-500">{hint}</div>}
             </Card>
           </div>

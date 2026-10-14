@@ -1,4 +1,5 @@
 import Link from "next/link";
+import AuthShell from "@/components/AuthShell";
 import { mfaBeginAction, mfaConfirmAction } from "@/app/account-actions";
 import { btn, Card, ErrorBanner, Field, input } from "@/app/ui";
 import { getDb } from "@/server/db/client";
@@ -13,7 +14,7 @@ export default async function Security({ searchParams }: PageProps<"/security">)
   const user = await getDb().user.findUniqueOrThrow({ where: { id: ctx.userId } });
   const pending = !user.mfaEnabled && user.mfaSecretEnc ? decryptSecret(user.mfaSecretEnc) : null;
   return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-4 px-4">
+    <AuthShell wide>
       <h1 className="text-2xl font-semibold">Two-factor authentication</h1>
       <ErrorBanner message={typeof error === "string" ? error : undefined} />
       {user.mfaEnabled ? (
@@ -55,6 +56,6 @@ export default async function Security({ searchParams }: PageProps<"/security">)
         </Card>
       )}
       {typeof ok === "string" && <p className="text-sm text-green-800">{ok}</p>}
-    </main>
+    </AuthShell>
   );
 }

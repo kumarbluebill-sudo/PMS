@@ -8,7 +8,7 @@ import { listRoomTypes } from "@/server/services/rooms";
 import { getOnboarding, WIZARD_STEPS } from "@/server/services/onboarding";
 import { getCtx } from "@/server/session";
 
-const link = "font-medium text-indigo-700 underline";
+const link = "font-medium text-brand-700 underline";
 
 export default async function Onboarding({ searchParams }: PageProps<"/onboarding">) {
   const sp = await searchParams;
@@ -39,7 +39,7 @@ export default async function Onboarding({ searchParams }: PageProps<"/onboardin
           {WIZARD_STEPS.map((label, i) => (
             <li key={label}>
               <Link href={`/onboarding?step=${i}`} aria-current={i === step ? "step" : undefined}
-                className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 ${i === step ? "border-indigo-700 bg-indigo-50 font-semibold" : "border-slate-300"}`}>
+                className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 ${i === step ? "border-brand-700 bg-brand-50 font-semibold" : "border-slate-300"}`}>
                 <span aria-hidden>{done[i] ? "✓" : i + 1}</span>
                 <span>{label}</span>
                 <span className="sr-only">{done[i] ? " (done)" : " (to do)"}</span>
@@ -48,7 +48,7 @@ export default async function Onboarding({ searchParams }: PageProps<"/onboardin
           ))}
         </ol>
         <div className="mt-2 h-1.5 rounded bg-slate-200" role="progressbar" aria-valuemin={0} aria-valuemax={WIZARD_STEPS.length} aria-valuenow={done.filter(Boolean).length} aria-label="Steps completed">
-          <div className="h-full rounded bg-indigo-700" style={{ width: `${(done.filter(Boolean).length / WIZARD_STEPS.length) * 100}%` }} />
+          <div className="h-full rounded bg-brand-700" style={{ width: `${(done.filter(Boolean).length / WIZARD_STEPS.length) * 100}%` }} />
         </div>
       </nav>
 

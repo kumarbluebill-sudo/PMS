@@ -13,7 +13,7 @@ export default async function Rooms({ searchParams }: PageProps<"/app/rooms">) {
   return (
     <>
       <PageHeader title="Rooms" subtitle="Add rooms one by one, or import many from a file." />
-      <p className="mb-3 text-sm"><a className="text-indigo-700 underline" href="/app/rooms/import">Import rooms from CSV / Excel</a> · <a className="text-indigo-700 underline" href="/app/rooms/plan">Floor plan</a></p>
+      <p className="mb-3 text-sm"><a className="text-brand-700 underline" href="/app/rooms/import">Import rooms from CSV / Excel</a> · <a className="text-brand-700 underline" href="/app/rooms/plan">Floor plan</a></p>
       <ErrorBanner message={typeof error === "string" ? error : undefined} />
       <div className="grid gap-4 md:grid-cols-2">
         <Card title="Add room">

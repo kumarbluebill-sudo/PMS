@@ -1,10 +1,11 @@
 import { resetPasswordAction } from "@/app/account-actions";
+import AuthShell from "@/components/AuthShell";
 import { btn, ErrorBanner, Field, input } from "@/app/ui";
 
 export default async function ResetPassword({ searchParams }: PageProps<"/reset-password">) {
   const { token, error } = await searchParams;
   return (
-    <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-4 px-4">
+    <AuthShell>
       <h1 className="text-2xl font-semibold">Choose a new password</h1>
       <ErrorBanner message={typeof error === "string" ? error : undefined} />
       <form action={resetPasswordAction} className="space-y-3">
@@ -15,6 +16,6 @@ export default async function ResetPassword({ searchParams }: PageProps<"/reset-
         <button className={`${btn} w-full`}>Update password</button>
       </form>
       <p className="text-xs text-slate-500">Updating your password signs you out everywhere.</p>
-    </main>
+    </AuthShell>
   );
 }

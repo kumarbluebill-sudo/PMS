@@ -25,13 +25,13 @@ export default async function FloorPlan({ searchParams }: PageProps<"/app/rooms/
       <PageHeader title="Floor plan" subtitle="Arrange room tiles on a grid. Use the controls under the grid to place or move a room." />
       <ErrorBanner message={error} />
       {floors.length === 0 ? (
-        <Card><p className="text-sm text-slate-600">Define buildings and floors first, then assign rooms to them. <Link className="text-indigo-700 underline" href="/app/structure">Buildings &amp; floors</Link></p></Card>
+        <Card><p className="text-sm text-slate-600">Define buildings and floors first, then assign rooms to them. <Link className="text-brand-700 underline" href="/app/structure">Buildings &amp; floors</Link></p></Card>
       ) : (
         <div className="space-y-4">
           <nav aria-label="Floor" className="flex flex-wrap gap-2">
             {floors.map((f) => (
               <Link key={f.id} href={`/app/rooms/plan?floor=${f.id}`} aria-current={f.id === floorId ? "page" : undefined}
-                className={`rounded border px-3 py-1 text-sm ${f.id === floorId ? "border-indigo-700 bg-indigo-50 font-medium" : "border-slate-300"}`}>{f.label}</Link>
+                className={`rounded border px-3 py-1 text-sm ${f.id === floorId ? "border-brand-700 bg-brand-50 font-medium" : "border-slate-300"}`}>{f.label}</Link>
             ))}
           </nav>
           {plan && (
