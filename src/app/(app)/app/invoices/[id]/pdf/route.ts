@@ -19,6 +19,7 @@ export async function GET(_req: NextRequest, { params }: RouteContext<"/app/invo
     supplier: inv.supplier as Party, recipient: inv.recipient as Party,
     placeOfSupply: inv.placeOfSupply, placeOfSupplyName: inv.placeOfSupply ? (GST_STATES[inv.placeOfSupply] ?? null) : null,
     terms: st["billing.invoiceTerms"], footerNote: st["billing.invoiceNotes"],
+    headerLine: st["billing.docHeader"], paymentInstructions: st["billing.paymentInstructions"], signatureLabel: st["billing.signatureLabel"],
     lines: inv.lines.map((l) => ({
       description: l.description, sacCode: l.sacCode, netMinor: l.netMinor, cgstMinor: l.cgstMinor, sgstMinor: l.sgstMinor,
       igstMinor: l.igstMinor, cessMinor: l.cessMinor, grossMinor: l.grossMinor,

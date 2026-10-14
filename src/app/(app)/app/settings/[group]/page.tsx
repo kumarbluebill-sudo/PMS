@@ -94,6 +94,21 @@ export default async function SettingsGroup({ params, searchParams }: PageProps<
           </Card>
         )}
         <Card title={g === "general" ? "Contact and policies" : "Settings"}>{form}</Card>
+        {g === "billing" && (
+          <Card title="Document preview">
+            <div className="rounded border border-dashed border-slate-300 p-4 text-sm" aria-label="Invoice preview">
+              <p className="text-base font-semibold">Tax Invoice</p>
+              <p className="text-slate-500">Sample content. Your header, payment instructions, terms and signature appear as set above.</p>
+              {String(values["billing.docHeader"] ?? "") && <p className="mt-2">{String(values["billing.docHeader"])}</p>}
+              <table className="mt-2 w-full text-xs"><thead><tr className="text-left text-slate-500"><th>Description</th><th>Taxable</th><th>GST</th><th>Total</th></tr></thead>
+                <tbody><tr><td>Room charge (sample)</td><td>₹1,000.00</td><td>₹ —</td><td>₹1,000.00</td></tr></tbody></table>
+              {String(values["billing.paymentInstructions"] ?? "") && <p className="mt-2 whitespace-pre-wrap"><strong>Payment: </strong>{String(values["billing.paymentInstructions"])}</p>}
+              {String(values["billing.invoiceTerms"] ?? "") && <p className="mt-2 whitespace-pre-wrap text-xs"><strong>Terms: </strong>{String(values["billing.invoiceTerms"])}</p>}
+              {String(values["billing.signatureLabel"] ?? "") && <p className="mt-6 border-t pt-1 text-right text-xs">{String(values["billing.signatureLabel"])}</p>}
+              <p className="mt-2 text-xs text-slate-500">Receipt layout: {String(values["billing.receiptLayout"] ?? "A4") === "THERMAL" ? "80 mm receipt printer" : "A4"}</p>
+            </div>
+          </Card>
+        )}
 
         {g === "security" && (
           <>

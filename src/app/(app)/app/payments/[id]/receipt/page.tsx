@@ -3,6 +3,7 @@ import { fmtDate } from "@/app/ui";
 import { getDb } from "@/server/db/client";
 import { formatInr } from "@/server/money";
 import { getCtx } from "@/server/session";
+import { isAdvance } from "@/server/pdf/receipt";
 import { getPaymentReceipt } from "@/server/services/payments";
 import { settingsFor } from "@/server/services/settings";
 import { PrintButton } from "../../../PrintButton";
@@ -13,16 +14,17 @@ export default async function Receipt({ params }: PageProps<"/app/payments/[id]/
   const { payment, property, balanceAfterMinor, receivedByName } = await getPaymentReceipt(getDb(), ctx, id);
   const res = payment.folio.reservation;
   const st = await settingsFor(getDb(), ctx);
+  const advance = isAdvance(res.status, payment.receivedAt, res.arrival);
   return (
     <div className="mx-auto max-w-xl">
       <div className="mb-3 flex items-center justify-between print:hidden">
         <Link className="text-sm underline" href={`/app/guest-folios/${payment.folioId}`}>Back to folio</Link>
-        <PrintButton />
+        <span className="flex gap-3"><a className="text-sm underline" href={`/app/payments/${payment.id}/pdf`}>Download PDF</a><PrintButton /></span>
       </div>
       <article className="rounded-lg border border-slate-200 bg-white p-6 text-sm shadow-sm print:border-0 print:shadow-none">
         <header className="flex flex-wrap justify-between gap-4">
           <div>
-            <h1 className="text-xl font-semibold">Payment receipt</h1>
+            <h1 className="text-xl font-semibold">{advance ? "Advance receipt" : "Payment receipt"}</h1>
             <p className="font-mono text-xs">{payment.id.slice(0, 8).toUpperCase()}</p>
             <p>Date: {fmtDate(payment.receivedAt)}</p>
           </div>
