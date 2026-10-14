@@ -80,6 +80,8 @@ model Property {
   users        UserProperty[]
   roomTypes    RoomType[]
   rooms        Room[]
+  buildings    Building[]
+  floors       Floor[]
   reservations Reservation[]
   tasks        HousekeepingTask[]
   maintenance  MaintenanceRequest[]
@@ -117,6 +119,9 @@ model RoomType {
   baseOccupancy       Int @default(2)
   extraAdultRateMinor Int @default(0)
   extraChildRateMinor Int @default(0) // per child per night; 0 = children stay free
+  description  String?
+  bedConfig    String?
+  amenities    String[] @default([])
   createdAt    DateTime @default(now())
 
   property Property @relation(fields: [propertyId], references: [id])
@@ -124,6 +129,45 @@ model RoomType {
 
   @@index([tenantId, propertyId])
   @@map("room_types")
+}
+
+/// A building or wing of a property. Deactivated, never deleted, once rooms reference it.
+model Building {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @db.Uuid
+  propertyId String   @db.Uuid
+  name       String
+  sortOrder  Int      @default(0)
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  property Property @relation(fields: [propertyId], references: [id])
+  floors   Floor[]
+  rooms    Room[]
+
+  @@unique([propertyId, name])
+  @@index([tenantId, propertyId])
+  @@map("buildings")
+}
+
+model Floor {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @db.Uuid
+  propertyId String   @db.Uuid
+  buildingId String   @db.Uuid
+  label      String
+  level      Int      @default(0)
+  sortOrder  Int      @default(0)
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  property Property @relation(fields: [propertyId], references: [id])
+  building Building @relation(fields: [buildingId], references: [id])
+  rooms    Room[]
+
+  @@unique([buildingId, label])
+  @@index([tenantId, propertyId])
+  @@map("floors")
 }
 
 model Room {
@@ -136,10 +180,17 @@ model Room {
   housekeeping   String  @default("CLEAN") // CLEAN | DIRTY | CLEANING | INSPECTED
   outOfOrder     Boolean @default(false)
   floor          Int?
+  buildingId     String? @db.Uuid
+  floorId        String? @db.Uuid
+  /// Tile position on the floor plan grid (0-based); null = not yet placed.
+  layoutX        Int?
+  layoutY        Int?
   createdAt      DateTime @default(now())
 
   property    Property   @relation(fields: [propertyId], references: [id])
   roomType    RoomType   @relation(fields: [roomTypeId], references: [id])
+  building    Building?  @relation(fields: [buildingId], references: [id])
+  floorRef    Floor?     @relation(fields: [floorId], references: [id])
   assignments RoomAssignment[]
   tasks       HousekeepingTask[]
   maintenance MaintenanceRequest[]

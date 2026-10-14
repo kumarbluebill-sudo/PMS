@@ -1,4 +1,5 @@
-import { addRoomAction, roomFloorAction } from "@/app/actions";
+import { addRoomAction, roomAssignFloorAction } from "@/app/actions";
+import { listStructure } from "@/server/services/structure";
 import { Badge, btn, btnGhost, Card, ErrorBanner, Field, input, PageHeader } from "@/app/ui";
 import { getDb } from "@/server/db/client";
 import { getCtx } from "@/server/session";
@@ -7,7 +8,8 @@ import { listRooms, listRoomTypes } from "@/server/services/rooms";
 export default async function Rooms({ searchParams }: PageProps<"/app/rooms">) {
   const { error } = await searchParams;
   const ctx = await getCtx();
-  const [rooms, types] = await Promise.all([listRooms(getDb(), ctx), listRoomTypes(getDb(), ctx)]);
+  const [rooms, types, buildings] = await Promise.all([listRooms(getDb(), ctx), listRoomTypes(getDb(), ctx), listStructure(getDb(), ctx)]);
+  const floorOptions = buildings.flatMap((b) => b.floors.filter((f) => f.active).map((f) => ({ id: f.id, label: `${b.name} – ${f.label}` })));
   return (
     <>
       <PageHeader title="Rooms" />
@@ -21,7 +23,13 @@ export default async function Rooms({ searchParams }: PageProps<"/app/rooms">) {
               </select>
             </Field>
             <Field label="Room number"><input name="number" required className={input} /></Field>
-            <Field label="Floor (optional)"><input name="floor" type="number" min={-5} max={200} className={input} /></Field>
+            <Field label="Floor (optional)">
+              <select name="floorId" className={input} defaultValue="">
+                <option value="">No floor</option>
+                {floorOptions.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
+              </select>
+            </Field>
+            {floorOptions.length === 0 && <p className="text-xs text-slate-500">Define buildings and floors under Buildings &amp; floors.</p>}
             <button className={btn} disabled={types.length === 0}>Add</button>
             {types.length === 0 && <p className="text-xs text-slate-500">Create a room type first.</p>}
           </form>
@@ -31,9 +39,12 @@ export default async function Rooms({ searchParams }: PageProps<"/app/rooms">) {
             {rooms.map((r) => (
               <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
                 <span>{r.number} <span className="text-slate-500">{r.roomType.name}</span></span>
-                <form action={roomFloorAction} className="flex items-center gap-1">
+                <form action={roomAssignFloorAction} className="flex items-center gap-1">
                   <input type="hidden" name="roomId" value={r.id} />
-                  <input name="floor" type="number" min={-5} max={200} defaultValue={r.floor ?? ""} aria-label={`Floor for room ${r.number}`} placeholder="Floor" className="w-16 rounded border border-slate-300 p-1 text-xs" />
+                  <select name="floorId" defaultValue={r.floorId ?? ""} aria-label={`Floor for room ${r.number}`} className="max-w-40 rounded border border-slate-300 p-1 text-xs">
+                    <option value="">No floor</option>
+                    {floorOptions.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
+                  </select>
                   <button className={btnGhost}>Set</button>
                 </form>
                 <Badge value={r.housekeeping} />

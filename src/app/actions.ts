@@ -14,6 +14,7 @@ import { createBooking } from "@/server/services/booking";
 import { rupeesToMinor } from "@/server/money";
 import { sendVerification } from "@/server/services/accounts";
 import { createRoom, createRoomType, setRoomFloor } from "@/server/services/rooms";
+import { assignRoomFloor, createBuilding, createFloor, reorder, setBuildingActive, setFloorActive } from "@/server/services/structure";
 import { createGuest } from "@/server/services/guests";
 import { cancelReservation, checkIn, checkOut, confirmReservation, markNoShow } from "@/server/services/reservations";
 import { createMaintenanceRequest, setRoomStatus } from "@/server/services/housekeeping";
@@ -84,6 +85,9 @@ export async function addRoomTypeAction(fd: FormData) {
       baseOccupancy: num(fd.get("baseOccupancy"), 2),
       extraAdultRateMinor: rupeesOpt(str(fd.get("extraAdultRate"))) ?? 0,
       extraChildRateMinor: rupeesOpt(str(fd.get("extraChildRate"))) ?? 0,
+      description: str(fd.get("description")) || undefined,
+      bedConfig: str(fd.get("bedConfig")) || undefined,
+      amenities: str(fd.get("amenities")).split(",").map((s) => s.trim()).filter(Boolean),
     }),
   );
 }
@@ -91,9 +95,46 @@ export async function addRoomTypeAction(fd: FormData) {
 export async function addRoomAction(fd: FormData) {
   const ctx = await getCtx();
   const floor = str(fd.get("floor")).trim();
+  const floorId = str(fd.get("floorId")).trim();
   await run("/app/rooms", () =>
-    createRoom(getDb(), ctx, { roomTypeId: str(fd.get("roomTypeId")), number: str(fd.get("number")), ...(floor !== "" && { floor: Number(floor) }) }),
+    createRoom(getDb(), ctx, {
+      roomTypeId: str(fd.get("roomTypeId")),
+      number: str(fd.get("number")),
+      ...(floorId !== "" && { floorId }),
+      ...(floorId === "" && floor !== "" && { floor: Number(floor) }),
+    }),
   );
+}
+
+export async function addBuildingAction(fd: FormData) {
+  const ctx = await getCtx();
+  await run("/app/structure", () => createBuilding(getDb(), ctx, { name: str(fd.get("name")) }));
+}
+
+export async function addFloorAction(fd: FormData) {
+  const ctx = await getCtx();
+  await run("/app/structure", () =>
+    createFloor(getDb(), ctx, { buildingId: str(fd.get("buildingId")), label: str(fd.get("label")), level: num(fd.get("level"), 0) }),
+  );
+}
+
+export async function structureToggleAction(fd: FormData) {
+  const ctx = await getCtx();
+  const kind = str(fd.get("kind"));
+  const id = str(fd.get("id"));
+  const active = str(fd.get("active")) === "true";
+  await run("/app/structure", () => (kind === "building" ? setBuildingActive(getDb(), ctx, id, active) : setFloorActive(getDb(), ctx, id, active)));
+}
+
+export async function structureReorderAction(fd: FormData) {
+  const ctx = await getCtx();
+  await run("/app/structure", () => reorder(getDb(), ctx, { kind: str(fd.get("kind")), id: str(fd.get("id")), direction: str(fd.get("direction")) }));
+}
+
+export async function roomAssignFloorAction(fd: FormData) {
+  const ctx = await getCtx();
+  const floorId = str(fd.get("floorId")).trim();
+  await run("/app/rooms", () => assignRoomFloor(getDb(), ctx, str(fd.get("roomId")), floorId === "" ? null : floorId));
 }
 
 export async function roomFloorAction(fd: FormData) {

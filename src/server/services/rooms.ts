@@ -13,6 +13,9 @@ const roomTypeSchema = z.object({
   baseOccupancy: z.number().int().min(1).max(20).default(2),
   extraAdultRateMinor: z.number().int().min(0).default(0),
   extraChildRateMinor: z.number().int().min(0).default(0),
+  description: z.string().trim().max(500).optional(),
+  bedConfig: z.string().trim().max(80).optional(),
+  amenities: z.array(z.string().trim().min(1).max(40)).max(30).default([]),
 });
 
 export async function createRoomType(db: PrismaClient, ctx: Ctx, input: unknown) {
@@ -30,14 +33,26 @@ export async function createRoom(db: PrismaClient, ctx: Ctx, input: unknown) {
   authorize(ctx, "rooms.manage");
   const propertyId = requireProperty(ctx);
   const d = z
-    .object({ roomTypeId: z.string().uuid(), number: z.string().trim().min(1).max(20), floor: z.number().int().min(-5).max(200).optional() })
+    .object({
+      roomTypeId: z.string().uuid(),
+      number: z.string().trim().min(1).max(20),
+      floor: z.number().int().min(-5).max(200).optional(),
+      floorId: z.string().uuid().optional(),
+    })
     .parse(input);
   return withTenant(db, ctx.tenantId, async (tx) => {
     const rt = await tx.roomType.findFirst({ where: { id: d.roomTypeId, propertyId } });
     if (!rt) throw new AppError("NOT_FOUND", "Room type not found.");
     const dup = await tx.room.findFirst({ where: { propertyId, number: d.number } });
     if (dup) throw new AppError("CONFLICT", `Room ${d.number} already exists.`);
-    const room = await tx.room.create({ data: { ...d, tenantId: ctx.tenantId, propertyId } });
+    const placement: { floor?: number; floorId?: string; buildingId?: string } = {};
+    if (d.floorId) {
+      const f = await tx.floor.findFirst({ where: { id: d.floorId, propertyId } });
+      if (!f) throw new AppError("NOT_FOUND", "Floor not found.");
+      if (!f.active) throw new AppError("VALIDATION", "That floor is inactive.");
+      Object.assign(placement, { floor: f.level, floorId: f.id, buildingId: f.buildingId });
+    } else if (d.floor !== undefined) placement.floor = d.floor;
+    const room = await tx.room.create({ data: { roomTypeId: d.roomTypeId, number: d.number, ...placement, tenantId: ctx.tenantId, propertyId } });
     await audit(tx, ctx, { action: "room.create", entityType: "Room", entityId: room.id, after: d });
     return room;
   });
@@ -67,7 +82,7 @@ export async function listRooms(db: PrismaClient, ctx: Ctx) {
   authorize(ctx, "rooms.view");
   const propertyId = requireProperty(ctx);
   return withTenant(db, ctx.tenantId, (tx) =>
-    tx.room.findMany({ where: { propertyId }, include: { roomType: true }, orderBy: { number: "asc" } }),
+    tx.room.findMany({ where: { propertyId }, include: { roomType: true, building: true, floorRef: true }, orderBy: { number: "asc" } }),
   );
 }
 
