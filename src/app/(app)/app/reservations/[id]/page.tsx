@@ -6,6 +6,8 @@ import { getDb } from "@/server/db/client";
 import { getCtx } from "@/server/session";
 import { listRooms } from "@/server/services/rooms";
 import { getReservation } from "@/server/services/reservations";
+import ReservationMessages from "../../messages/ReservationMessages";
+import { getConsent, messagingStatus } from "@/server/services/messaging";
 import { FeedbackLinkButton } from "../../FeedbackLinkButton";
 import { ReservationActions } from "../../ReservationActions";
 
@@ -18,6 +20,8 @@ export default async function StayDetail({ params, searchParams }: PageProps<"/a
   const canModify = roleHasPermission(ctx.role, "reservations.modify", ctx.extra) && (r.status === "CONFIRMED" || r.status === "CHECKED_IN");
   const rooms = canModify ? await listRooms(db, ctx) : [];
   const back = `/app/reservations/${r.id}`;
+  const canMessage = roleHasPermission(ctx.role, "guests.manage", ctx.extra);
+  const consent = canMessage ? await getConsent(db, ctx, r.guestId) : null;
   const room = r.assignments.find((a) => a.active)?.room ?? r.assignments.at(-1)?.room;
   return (
     <>
@@ -48,6 +52,9 @@ export default async function StayDetail({ params, searchParams }: PageProps<"/a
             ))}
           </ul>
         </Card>
+        {canMessage && (
+          <ReservationMessages reservationId={r.id} guestId={r.guestId} back={back} consent={consent ? { status: consent.status, source: consent.source } : null} hasPhone={!!r.guest.phone} testMode={!messagingStatus().configured} />
+        )}
         {roleHasPermission(ctx.role, "feedback.manage", ctx.extra) && (r.status === "CHECKED_IN" || r.status === "CHECKED_OUT") && (
           <Card title="Guest feedback">
             <p className="mb-2 text-sm text-slate-600">Create a private, single-use link the guest can open without logging in.</p>
