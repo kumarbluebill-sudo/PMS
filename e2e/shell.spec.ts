@@ -8,7 +8,7 @@ async function signUp(page: Page) {
   await page.getByLabel("Business name").fill(`Shell Hotels ${stamp}`);
   await page.getByLabel("First property name").fill("Shell Inn");
   await page.getByLabel("Your name").fill("Shell Owner");
-  await page.getByLabel("Email").fill(`shell-${stamp}@test.local`);
+  await page.getByLabel("Email").fill(`shell-${stamp}${Math.random().toString(36).slice(2, 7)}@test.local`);
   await page.getByLabel(/Password/).fill("e2e-password-123");
   await page.getByRole("button", { name: "Create account" }).click();
   await expect(page).toHaveURL(/\/security/);
@@ -48,4 +48,42 @@ test("navigation: grouped sidebar on desktop, drawer on phones", async ({ page }
   await expect(nav.getByRole("link", { name: "Guests" })).toBeHidden();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
   expect(overflow).toBe(false);
+});
+
+test("room board: status key and display options in a side panel", async ({ page }) => {
+  test.setTimeout(120_000);
+  await signUp(page);
+  await page.goto("/app/room-types");
+  await page.getByLabel("Name").fill("Deluxe");
+  await page.getByLabel("Base rate (₹)").fill("4500");
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(page.getByText("Deluxe").first()).toBeVisible();
+  await page.goto("/app/rooms");
+  await page.getByLabel("Room number").fill("101");
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(page.getByText("Rooms (1)")).toBeVisible();
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/app/dashboard");
+  const key = page.getByRole("list", { name: "Room status legend" });
+  await expect(key.getByRole("link", { name: /^Occupied: 0 rooms/ })).toBeVisible();
+  await expect(key.getByRole("link", { name: /Available: 1 room/ })).toBeVisible();
+  await expect(page.getByRole("progressbar", { name: "Occupancy" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /^No floor assigned/ })).toBeVisible();
+  await key.getByRole("link", { name: /Occupied: 0 rooms/ }).click();
+  await expect(page).toHaveURL(/status=OCCUPIED/);
+  await expect(page.getByText("No rooms match these filters")).toBeVisible();
+  await page.getByRole("link", { name: "Show all", exact: true }).click();
+  await expect(page).not.toHaveURL(/status=/);
+
+  await page.setViewportSize({ width: 390, height: 800 });
+  await page.goto("/app/dashboard");
+  const open = page.getByRole("button", { name: /Display options/ });
+  await expect(page.getByRole("button", { name: "Apply" })).toBeHidden();
+  await open.click();
+  await expect(page.getByRole("button", { name: "Apply" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: "Apply" })).toBeHidden();
+  await expect(open).toBeFocused();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
 });

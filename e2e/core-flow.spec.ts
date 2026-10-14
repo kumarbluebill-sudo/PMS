@@ -122,7 +122,7 @@ test("owner registers, enrols MFA, runs a stay end to end, and it is audited", a
   await expect(page.getByText("In house (1)")).toBeVisible();
 
   // The room board lists the room with its guest and a text status (not colour alone).
-  await page.goto("/app/dashboard");
+  await page.goto("/app/dashboard?view=table");
   const row101 = page.getByRole("row").filter({ has: page.getByRole("rowheader", { name: "101" }) });
   await expect(row101.getByText("Occupied")).toBeVisible();
   await expect(row101.getByText("Asha Verma")).toBeVisible();
@@ -207,7 +207,7 @@ test("owner registers, enrols MFA, runs a stay end to end, and it is audited", a
   await page.getByLabel("Reason").fill("AC not cooling");
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByRole("heading", { name: "Room 101: AC not cooling" })).toBeVisible();
-  await page.goto("/app/dashboard");
+  await page.goto("/app/dashboard?view=table");
   const ooo = page.getByRole("row").filter({ has: page.getByRole("rowheader", { name: "101" }) });
   await expect(ooo.getByText("Out of order").first()).toBeVisible();
   await expect(ooo.getByText(/Plumbing: AC not cooling/)).toBeVisible();
@@ -216,7 +216,7 @@ test("owner registers, enrols MFA, runs a stay end to end, and it is audited", a
   await page.getByLabel(/I have checked the room/).check();
   await page.getByRole("button", { name: "Resolve", exact: true }).click();
   await expect(page.getByText("Resolved.")).toBeVisible();
-  await page.goto("/app/dashboard");
+  await page.goto("/app/dashboard?view=table");
   await expect(page.getByRole("row").filter({ has: page.getByRole("rowheader", { name: "101" }) }).getByText("Cleaning required")).toBeVisible();
 
   // Audit trail captured the workflow.

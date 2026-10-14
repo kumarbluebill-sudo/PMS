@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { PrismaClient } from "@prisma/client";
+import { statusCounts } from "@/server/domain/occupancy";
 import { authorize, requireProperty, type Ctx } from "@/server/auth/context";
 import { roleHasPermission } from "@/server/auth/permissions";
 import { withTenant } from "@/server/db/withTenant";
@@ -299,6 +300,6 @@ export async function roomBoard(db: PrismaClient, ctx: Ctx, input: BoardFilter =
     } else if (f.sort === "status") {
       view = view.slice().sort((a, b) => (STATUS_ORDER.get(a.status)! - STATUS_ORDER.get(b.status)!) || natural(a.number, b.number));
     }
-    return { date, today, live, checkOutTime: property.checkOutTime, floors, buildings, roomTypes, cards, rows: view, allRowCount: rows.length };
+    return { date, today, live, checkOutTime: property.checkOutTime, floors, buildings, roomTypes, cards, statusCounts: statusCounts(rows), rows: view, allRowCount: rows.length };
   });
 }
