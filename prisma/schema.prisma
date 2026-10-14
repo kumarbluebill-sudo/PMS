@@ -251,6 +251,15 @@ model Reservation {
   agreedRateMinor Int? // nightly rate when different from the room type base rate (discount applied)
   discountReason  String?
   quotedTotalMinor Int? // estimate shown at booking time; the folio is the source of truth
+  // Front office
+  vip                     Boolean   @default(false)
+  etaTime                 String? // expected arrival time, HH:MM
+  earlyCheckinRequest     String?
+  lateCheckoutRequest     String?
+  registrationCompletedAt DateTime?
+  idVerifiedAt            DateTime?
+  idVerifiedBy            String?   @db.Uuid
+  noShowAt                DateTime?
 
   property    Property @relation(fields: [propertyId], references: [id])
   guest       Guest    @relation(fields: [guestId], references: [id])
@@ -850,4 +859,20 @@ model MessageLog {
   @@index([tenantId, propertyId, createdAt])
   @@index([providerMessageId])
   @@map("message_logs")
+}
+
+/// Acknowledgement or resolution of a derived alert (alerts themselves are computed live from data).
+model AlertAck {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @db.Uuid
+  propertyId String   @db.Uuid
+  alertKey   String
+  status     String // ACKNOWLEDGED | RESOLVED
+  note       String?
+  by         String   @db.Uuid
+  at         DateTime @default(now())
+
+  @@unique([propertyId, alertKey])
+  @@index([tenantId, propertyId])
+  @@map("alert_acks")
 }

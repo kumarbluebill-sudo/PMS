@@ -70,7 +70,10 @@ export async function confirmReservation(db: PrismaClient, ctx: Ctx, id: string)
 
 export async function markNoShow(db: PrismaClient, ctx: Ctx, id: string) {
   authorize(ctx, "reservations.cancel");
-  return transition(db, ctx, id, "NO_SHOW", releaseRoom);
+  return transition(db, ctx, id, "NO_SHOW", async (tx, r) => {
+    await releaseRoom(tx, r);
+    await tx.reservation.update({ where: { id: r.id }, data: { noShowAt: new Date() } });
+  });
 }
 
 export async function checkIn(db: PrismaClient, ctx: Ctx, id: string) {

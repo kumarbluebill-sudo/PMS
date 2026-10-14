@@ -55,6 +55,11 @@ export const DEFS = {
   "reservation.confirmationHeader": def({ scope: "PROPERTY", perm: "settings.manage", group: "reservations", label: "Confirmation: opening text", control: "textarea", schema: text(1000), default: "" }),
   "reservation.confirmationFooter": def({ scope: "PROPERTY", perm: "settings.manage", group: "reservations", label: "Confirmation: closing text", control: "textarea", schema: text(1000), default: "" }),
 
+  // Front office
+  "frontoffice.noShowCutoffTime": def({ scope: "PROPERTY", perm: "settings.manage", group: "reservations", label: "No-show review time (HH:MM)", control: "text", help: "From this time on the arrival date, confirmed reservations that have not arrived are listed for staff to review. Nothing is marked a no-show automatically.", schema: z.string().trim().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use 24-hour HH:MM, for example 22:00."), default: "22:00" }),
+  "frontoffice.requireIdAtCheckin": def({ scope: "PROPERTY", perm: "settings.manage", group: "reservations", label: "Require ID to be verified before check-in", control: "checkbox", help: "When on, check-in from the check-in screen is blocked until a staff member records that ID was verified.", schema: z.boolean(), default: false }),
+  "frontoffice.dashboardRefreshSeconds": def({ scope: "PROPERTY", perm: "settings.manage", group: "reservations", label: "Refresh the room board every (seconds, 0 = off)", control: "number", min: 0, max: 600, schema: z.number().int().min(0).max(600), default: 0 }),
+
   // Rooms and housekeeping
   "rooms.statusLabels": def({
     scope: "PROPERTY", perm: "settings.manage", group: "rooms", label: "Room status labels and colours", control: "text",
