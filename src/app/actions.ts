@@ -23,6 +23,9 @@ import { createMaintenanceRequest, setRoomStatus } from "@/server/services/house
 const num = (v: FormDataEntryValue | null, d = 0) => (v === null || v === "" ? d : Number(v));
 const str = (v: FormDataEntryValue | null) => (typeof v === "string" ? v : "");
 
+/** Lets a form return to the setup wizard step it was shown on; anything else falls back. */
+const backTo = (fd: FormData, fallback: string) => (/^\/onboarding\?step=\d$/.test(str(fd.get("back"))) ? str(fd.get("back")) : fallback);
+
 /** Runs a mutation; on failure redirects back with a safe message (no internals leaked). */
 async function run(back: string, fn: () => Promise<unknown>, redirectBack = false) {
   let error: string | null = null;
@@ -77,7 +80,7 @@ export async function switchPropertyAction(fd: FormData) {
 
 export async function addRoomTypeAction(fd: FormData) {
   const ctx = await getCtx();
-  await run("/app/room-types", () =>
+  await run(backTo(fd, "/app/room-types"), () =>
     createRoomType(getDb(), ctx, {
       name: str(fd.get("name")),
       maxAdults: num(fd.get("maxAdults"), 2),
@@ -109,12 +112,12 @@ export async function addRoomAction(fd: FormData) {
 
 export async function addBuildingAction(fd: FormData) {
   const ctx = await getCtx();
-  await run("/app/structure", () => createBuilding(getDb(), ctx, { name: str(fd.get("name")) }));
+  await run(backTo(fd, "/app/structure"), () => createBuilding(getDb(), ctx, { name: str(fd.get("name")) }));
 }
 
 export async function addFloorAction(fd: FormData) {
   const ctx = await getCtx();
-  await run("/app/structure", () =>
+  await run(backTo(fd, "/app/structure"), () =>
     createFloor(getDb(), ctx, { buildingId: str(fd.get("buildingId")), label: str(fd.get("label")), level: num(fd.get("level"), 0) }),
   );
 }

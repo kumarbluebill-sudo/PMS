@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { updatePropertyAction } from "@/app/account-actions";
-import { wizardFinishAction, wizardStepAction } from "@/app/actions";
+import { addBuildingAction, addFloorAction, addRoomTypeAction, wizardFinishAction, wizardStepAction } from "@/app/actions";
 import { btn, btnGhost, Card, ErrorBanner, Field, input } from "@/app/ui";
 import { getDb } from "@/server/db/client";
+import { listStructure } from "@/server/services/structure";
+import { listRoomTypes } from "@/server/services/rooms";
 import { getOnboarding, WIZARD_STEPS } from "@/server/services/onboarding";
 import { getCtx } from "@/server/session";
 
@@ -14,6 +16,8 @@ export default async function Onboarding({ searchParams }: PageProps<"/onboardin
   const { state, property: p, counts } = await getOnboarding(getDb(), ctx);
   const raw = typeof sp.step === "string" ? Number(sp.step) : state.step;
   const step = Number.isInteger(raw) && raw >= 0 && raw < WIZARD_STEPS.length ? raw : 0;
+  const buildings = step === 1 ? await listStructure(getDb(), ctx) : [];
+  const types = step === 2 ? await listRoomTypes(getDb(), ctx) : [];
   const done = [!!p.address, counts.buildings > 0 && counts.floors > 0, counts.types > 0, counts.rooms > 0, counts.placed > 0, !!state.completedAt];
 
   const nav = (to: number, label: string, primary = false) => (
@@ -61,15 +65,48 @@ export default async function Onboarding({ searchParams }: PageProps<"/onboardin
           </form>
         )}
         {step === 1 && (
-          <div className="space-y-2 text-sm">
-            <p>{counts.buildings} building(s), {counts.floors} floor(s) defined.</p>
-            <p>A single building is enough for most hotels. <Link className={link} href="/app/structure">Open Buildings &amp; floors</Link>.</p>
+          <div className="space-y-4 text-sm">
+            <p>{counts.buildings} building(s), {counts.floors} floor(s) defined. One building is enough for most hotels.</p>
+            <ul className="divide-y">
+              {buildings.filter((b) => b.active).map((b) => (
+                <li key={b.id} className="py-1"><strong>{b.name}</strong>: {b.floors.filter((f) => f.active).map((f) => f.label).join(", ") || "no floors yet"}</li>
+              ))}
+            </ul>
+            <form action={addBuildingAction} className="flex flex-wrap items-end gap-2">
+              <input type="hidden" name="back" value="/onboarding?step=1" />
+              <Field label="New building or wing"><input name="name" required maxLength={80} placeholder="Main Building" className={input} /></Field>
+              <button className={btn}>Add building</button>
+            </form>
+            {buildings.some((b) => b.active) && (
+              <form action={addFloorAction} className="flex flex-wrap items-end gap-2">
+                <input type="hidden" name="back" value="/onboarding?step=1" />
+                <Field label="Building">
+                  <select name="buildingId" required className={input}>{buildings.filter((b) => b.active).map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select>
+                </Field>
+                <Field label="Floor name"><input name="label" required maxLength={80} placeholder="Floor 1" className={input} /></Field>
+                <Field label="Level"><input name="level" type="number" min={-5} max={200} defaultValue={0} className={input} /></Field>
+                <button className={btn}>Add floor</button>
+              </form>
+            )}
+            <p className="text-xs text-slate-500">Reordering and deactivating are under <Link className={link} href="/app/structure">Buildings &amp; floors</Link>.</p>
           </div>
         )}
         {step === 2 && (
-          <div className="space-y-2 text-sm">
+          <div className="space-y-4 text-sm">
             <p>{counts.types} room categor{counts.types === 1 ? "y" : "ies"} defined.</p>
-            <p>Set occupancy, bed configuration, amenities and the default rate. <Link className={link} href="/app/room-types">Open Room types</Link>.</p>
+            <ul className="divide-y">{types.map((t) => <li key={t.id} className="py-1">{t.name} <span className="text-slate-500">({t.maxAdults}A/{t.maxChildren}C{t.bedConfig ? `, ${t.bedConfig}` : ""})</span></li>)}</ul>
+            <form action={addRoomTypeAction} className="grid gap-3 sm:grid-cols-2">
+              <input type="hidden" name="back" value="/onboarding?step=2" />
+              <Field label="Category name"><input name="name" required maxLength={80} placeholder="Deluxe" className={input} /></Field>
+              <Field label="Default rate (₹ per night)"><input name="baseRate" type="number" min={0} step="0.01" className={input} /></Field>
+              <Field label="Standard occupancy"><input name="baseOccupancy" type="number" min={1} defaultValue={2} className={input} /></Field>
+              <Field label="Max adults"><input name="maxAdults" type="number" min={1} defaultValue={2} className={input} /></Field>
+              <Field label="Max children"><input name="maxChildren" type="number" min={0} defaultValue={0} className={input} /></Field>
+              <Field label="Bed configuration"><input name="bedConfig" placeholder="1 King or 2 Twin" className={input} /></Field>
+              <div className="sm:col-span-2"><Field label="Amenities (comma separated)"><input name="amenities" placeholder="AC, WiFi, TV" className={input} /></Field></div>
+              <div><button className={btn}>Add category</button></div>
+            </form>
+            <p className="text-xs text-slate-500">Extra-person rates and descriptions are under <Link className={link} href="/app/room-types">Room types</Link>.</p>
           </div>
         )}
         {step === 3 && (
