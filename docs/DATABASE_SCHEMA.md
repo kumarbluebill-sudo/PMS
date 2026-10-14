@@ -43,3 +43,6 @@ Debit notes, advance receipts, folio transfers, expenses/suppliers, channels, su
 
 ## Added 2026-10-14
 `buildings`, `floors` (deactivate-only; unique name per property / label per building), `rooms.buildingId/floorId/layoutX/layoutY` (unique cell per floor, both coordinates set or both null), `room_types.description/bedConfig/amenities`, `onboarding_states` (one row per property), `message_templates`, `guest_consents` (one per guest and channel, GRANTED or REVOKED), `message_logs` (no message text or full phone number; unique idempotency key per property). All have the same tenant RLS policy and grants to `pms_app`.
+
+## Added 2026-10-15
+`reservations`: `vip`, `etaTime`, `earlyCheckinRequest`, `lateCheckoutRequest`, `registrationCompletedAt`, `idVerifiedAt`, `idVerifiedBy`, `noShowAt`. `alert_acks` (one acknowledgement or resolution per property and alert key; alerts themselves are computed from live data). Same tenant RLS policy and grants as other tables.

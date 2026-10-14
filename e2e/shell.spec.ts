@@ -67,23 +67,54 @@ test("room board: status key and display options in a side panel", async ({ page
   await page.goto("/app/dashboard");
   const key = page.getByRole("list", { name: "Room status legend" });
   await expect(key.getByRole("link", { name: /^Occupied: 0 rooms/ })).toBeVisible();
-  await expect(key.getByRole("link", { name: /Available: 1 room/ })).toBeVisible();
+  await expect(key.getByRole("link", { name: /^Available: 1 room/ })).toBeVisible();
   await expect(page.getByRole("progressbar", { name: "Occupancy" })).toBeVisible();
+  await expect(page.getByRole("list", { name: "Hotel performance summary" }).getByRole("link", { name: /Physical rooms/ })).toBeVisible();
   await expect(page.getByRole("heading", { name: /^No floor assigned/ })).toBeVisible();
-  await key.getByRole("link", { name: /Occupied: 0 rooms/ }).click();
+  await key.getByRole("link", { name: /^Occupied: 0 rooms/ }).click();
   await expect(page).toHaveURL(/status=OCCUPIED/);
   await expect(page.getByText("No rooms match these filters")).toBeVisible();
-  await page.getByRole("link", { name: "Show all", exact: true }).click();
+  await key.getByRole("link", { name: /^Occupied: 0 rooms.*show all/ }).click();
   await expect(page).not.toHaveURL(/status=/);
 
   await page.setViewportSize({ width: 390, height: 800 });
   await page.goto("/app/dashboard");
-  const open = page.getByRole("button", { name: /Display options/ });
-  await expect(page.getByRole("button", { name: "Apply" })).toBeHidden();
+  const open = page.getByRole("button", { name: /Performance and alerts/ });
+  const alertsCard = page.getByRole("heading", { name: /^Alerts \(/ });
+  await expect(alertsCard).toBeHidden();
   await open.click();
-  await expect(page.getByRole("button", { name: "Apply" })).toBeVisible();
+  await expect(alertsCard).toBeVisible();
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("button", { name: "Apply" })).toBeHidden();
+  await expect(alertsCard).toBeHidden();
   await expect(open).toBeFocused();
   expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
+});
+
+test("command centre: header, quick actions, settings drawer, worklists and analytics", async ({ page }) => {
+  test.setTimeout(120_000);
+  await signUp(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/app/dashboard");
+  await expect(page.getByRole("search")).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Quick actions" }).getByRole("link", { name: "New reservation" })).toBeVisible();
+  // the dashboard opens with the narrow icon rail; the toggle expands it
+  const toggle = page.getByRole("button", { name: /Expand menu/ });
+  await toggle.click();
+  await expect(page.getByRole("navigation", { name: "Sections" }).getByText("Housekeeping", { exact: true }).first()).toBeVisible();
+
+  await page.getByRole("button", { name: "Settings" }).click();
+  const drawer = page.getByRole("dialog", { name: "Settings" });
+  await expect(drawer.getByRole("link", { name: /Room-status colours/ })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(drawer).toBeHidden();
+
+  await page.goto("/app/operations");
+  await expect(page.getByRole("heading", { name: "Today's operations" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /^No-show candidates/ })).toBeVisible();
+  await page.goto("/app/search?q=zz");
+  await expect(page.getByText(/Nothing found/)).toBeVisible();
+  await page.goto("/app/alerts");
+  await expect(page.getByRole("heading", { name: "Alerts and tasks" })).toBeVisible();
+  await page.goto("/app/dashboard/analytics");
+  await expect(page.getByRole("heading", { name: "Occupancy and revenue" })).toBeVisible();
 });

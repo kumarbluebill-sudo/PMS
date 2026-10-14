@@ -33,7 +33,10 @@ export type OpsRow = {
   reference: string;
   guest: string;
   status: string;
+  source: string;
   room: string | null;
+  /** True when the assigned room is clean (or inspected) and not out of order. Null when no room is assigned. */
+  roomReady: boolean | null;
   arrival: string;
   departure: string;
   adults: number;
@@ -101,7 +104,7 @@ export async function operations(db: PrismaClient, ctx: Ctx, input: { date?: str
       },
       include: {
         guest: { select: { name: true, phone: true, idNumberEnc: true, idType: true } },
-        assignments: { where: { active: true }, include: { room: { select: { id: true, number: true, outOfOrder: true } } }, take: 1 },
+        assignments: { where: { active: true }, include: { room: { select: { id: true, number: true, outOfOrder: true, housekeeping: true } } }, take: 1 },
       },
       orderBy: { arrival: "asc" },
       take: 500,
@@ -124,7 +127,9 @@ export async function operations(db: PrismaClient, ctx: Ctx, input: { date?: str
 
     const row = (r: (typeof live)[number]): OpsRow => ({
       id: r.id, reference: r.reference, guest: r.guest.name, status: r.status,
-      room: r.assignments[0]?.room.number ?? null, arrival: iso(r.arrival), departure: iso(r.departure),
+      source: r.source, room: r.assignments[0]?.room.number ?? null,
+      roomReady: r.assignments[0] ? !r.assignments[0].room.outOfOrder && ["CLEAN", "INSPECTED"].includes(r.assignments[0].room.housekeeping) : null,
+      arrival: iso(r.arrival), departure: iso(r.departure),
       adults: r.adults, children: r.children, vip: r.vip, notes: r.notes, etaTime: r.etaTime,
       earlyCheckinRequest: r.earlyCheckinRequest, lateCheckoutRequest: r.lateCheckoutRequest,
       idVerified: !!r.idVerifiedAt, registrationComplete: !!r.registrationCompletedAt,
@@ -323,3 +328,119 @@ export async function confirmNoShow(db: PrismaClient, ctx: Ctx, reservationId: s
 }
 
 export type { Prisma };
+
+// ---------- screens: check-in and checkout context ----------
+
+/** Everything the check-in screen needs: details, readiness checklist, eligible rooms and the money picture. */
+export async function checkInContext(db: PrismaClient, ctx: Ctx, reservationId: string) {
+  authorize(ctx, "reservations.view");
+  const propertyId = requireProperty(ctx);
+  const canMoney = roleHasPermission(ctx.role, "billing.view", ctx.extra);
+  const sensitive = roleHasPermission(ctx.role, "guests.viewSensitive", ctx.extra);
+  return withTenant(db, ctx.tenantId, async (tx) => {
+    const r = await tx.reservation.findFirst({
+      where: { id: reservationId, propertyId },
+      include: {
+        guest: true,
+        assignments: { where: { active: true }, include: { room: { include: { roomType: { select: { name: true } } } } }, take: 1 },
+      },
+    });
+    if (!r) throw new AppError("NOT_FOUND", "Reservation not found.");
+    const type = await tx.roomType.findFirst({ where: { id: r.roomTypeId }, select: { name: true } });
+    const settings = await loadSettings(tx, ctx.tenantId, propertyId);
+    const prop = await tx.property.findFirstOrThrow({ where: { id: propertyId }, select: { timezone: true } });
+    const today = dateInZone(new Date(), prop.timezone);
+    // Eligible rooms: free for these dates, across all categories so a room can be changed to another category.
+    const types = await tx.roomType.findMany({ where: { propertyId }, select: { id: true, name: true } });
+    const free: { id: string; number: string; type: string; housekeeping: string }[] = [];
+    if (["CONFIRMED", "CHECKED_IN"].includes(r.status)) {
+      for (const t of types) {
+        for (const room of await findFreeRooms(tx, propertyId, t.id, iso(r.arrival), iso(r.departure))) free.push({ id: room.id, number: room.number, type: t.name, housekeeping: room.housekeeping });
+      }
+    }
+    let money: { totalMinor: number; paidMinor: number; balanceMinor: number; folioId: string | null } | null = null;
+    if (canMoney) {
+      const folio = await tx.folio.findUnique({ where: { reservationId_label: { reservationId, label: "GUEST" } } });
+      if (folio) {
+        const sums = await tx.folioEntry.groupBy({ by: ["kind"], where: { folioId: folio.id }, _sum: { balanceDeltaMinor: true } });
+        const s = (k: string[]) => sums.filter((x) => k.includes(x.kind)).reduce((t, x) => t + (x._sum.balanceDeltaMinor ?? 0), 0);
+        money = { totalMinor: s(["CHARGE", "DISCOUNT", "REVERSAL"]), paidMinor: -s(["PAYMENT"]), balanceMinor: s(["CHARGE", "DISCOUNT", "REVERSAL", "PAYMENT", "REFUND"]), folioId: folio.id };
+      } else money = { totalMinor: 0, paidMinor: 0, balanceMinor: 0, folioId: null };
+    }
+    const room = r.assignments[0]?.room ?? null;
+    return {
+      reservation: {
+        id: r.id, reference: r.reference, status: r.status, source: r.source, arrival: iso(r.arrival), departure: iso(r.departure),
+        adults: r.adults, children: r.children, notes: r.notes, vip: r.vip, etaTime: r.etaTime,
+        earlyCheckinRequest: r.earlyCheckinRequest, lateCheckoutRequest: r.lateCheckoutRequest,
+        registrationComplete: !!r.registrationCompletedAt, idVerified: !!r.idVerifiedAt, roomTypeName: type?.name ?? "",
+      },
+      guest: { name: r.guest.name, phone: sensitive ? r.guest.phone : r.guest.phone ? "Hidden" : null, email: sensitive ? r.guest.email : r.guest.email ? "Hidden" : null, idType: r.guest.idType, idRecorded: !!r.guest.idNumberEnc, hasPhone: !!r.guest.phone },
+      room: room ? { id: room.id, number: room.number, type: room.roomType.name, housekeeping: room.housekeeping, outOfOrder: room.outOfOrder } : null,
+      issues: registrationIssues(r.guest, r),
+      requireId: !!settings["frontoffice.requireIdAtCheckin"],
+      arrivalIsFuture: iso(r.arrival) > today,
+      today,
+      freeRooms: free,
+      money,
+    };
+  });
+}
+
+/** Charges, payments and invoices for the departing guest, so checkout never hides money. */
+export async function checkoutSummary(db: PrismaClient, ctx: Ctx, reservationId: string) {
+  authorize(ctx, "frontdesk.checkout");
+  authorize(ctx, "billing.view");
+  const propertyId = requireProperty(ctx);
+  return withTenant(db, ctx.tenantId, async (tx) => {
+    const r = await tx.reservation.findFirst({
+      where: { id: reservationId, propertyId },
+      include: { guest: { select: { name: true } }, assignments: { orderBy: { createdAt: "desc" }, take: 1, include: { room: { select: { number: true } } } } },
+    });
+    if (!r) throw new AppError("NOT_FOUND", "Reservation not found.");
+    const prop = await tx.property.findFirstOrThrow({ where: { id: propertyId }, select: { checkOutTime: true, timezone: true } });
+    const today = dateInZone(new Date(), prop.timezone);
+    const folio = await tx.folio.findUnique({ where: { reservationId_label: { reservationId, label: "GUEST" } } });
+    const entries = folio ? await tx.folioEntry.findMany({ where: { folioId: folio.id }, select: { kind: true, category: true, netMinor: true, taxMinor: true, balanceDeltaMinor: true } }) : [];
+    const sum = (f: (e: (typeof entries)[number]) => boolean, pick: (e: (typeof entries)[number]) => number) => entries.filter(f).reduce((t, e) => t + pick(e), 0);
+    const roomCharges = sum((e) => e.kind === "CHARGE" && e.category === "ROOM", (e) => e.netMinor + e.taxMinor);
+    const serviceCharges = sum((e) => e.kind === "CHARGE" && e.category !== "ROOM", (e) => e.netMinor + e.taxMinor);
+    const adjustments = sum((e) => e.kind === "DISCOUNT" || e.kind === "REVERSAL", (e) => e.balanceDeltaMinor);
+    const paid = -sum((e) => e.kind === "PAYMENT", (e) => e.balanceDeltaMinor);
+    const refunded = sum((e) => e.kind === "REFUND", (e) => e.balanceDeltaMinor);
+    const balance = sum(() => true, (e) => e.balanceDeltaMinor);
+    const invoices = folio ? await tx.invoice.findMany({ where: { folioId: folio.id }, select: { id: true, number: true, kind: true, grossMinor: true, issuedAt: true }, orderBy: { issuedAt: "asc" } }) : [];
+    const nights = Math.round((r.departure.getTime() - r.arrival.getTime()) / 86_400_000);
+    const postedNights = folio ? await tx.folioEntry.count({ where: { folioId: folio.id, idempotencyKey: { startsWith: `room:${reservationId}:` } } }) : 0;
+    return {
+      id: r.id, reference: r.reference, status: r.status, guest: r.guest.name, room: r.assignments[0]?.room.number ?? null,
+      arrival: iso(r.arrival), departure: iso(r.departure), expectedCheckout: `${iso(r.departure)} ${prop.checkOutTime}`,
+      overdue: r.status === "CHECKED_IN" && iso(r.departure) < today,
+      lateCheckoutRequest: r.lateCheckoutRequest,
+      folioId: folio?.id ?? null, roomCharges, serviceCharges, adjustments, paid, refunded, balance,
+      unpostedNights: Math.max(0, nights - postedNights),
+      invoices: invoices.map((i) => ({ id: i.id, number: i.number, kind: i.kind, grossMinor: i.grossMinor, issuedAt: i.issuedAt.toISOString().slice(0, 10) })),
+    };
+  });
+}
+
+/** Housekeeping and maintenance picture for the operations panel. Housekeeping state stays separate from reservation state. */
+export async function housekeepingSummary(db: PrismaClient, ctx: Ctx) {
+  authorize(ctx, "rooms.view");
+  const propertyId = requireProperty(ctx);
+  return withTenant(db, ctx.tenantId, async (tx) => {
+    const [rooms, tasks, requests] = await Promise.all([
+      tx.room.findMany({ where: { propertyId }, select: { housekeeping: true, outOfOrder: true } }),
+      tx.housekeepingTask.count({ where: { propertyId, status: { in: ["PENDING", "IN_PROGRESS"] } } }),
+      tx.maintenanceRequest.findMany({ where: { propertyId, status: { not: "RESOLVED" } }, include: { room: { select: { number: true } } }, orderBy: { createdAt: "asc" } }),
+    ]);
+    const by = (k: string) => rooms.filter((r) => !r.outOfOrder && r.housekeeping === k).length;
+    return {
+      needsCleaning: by("DIRTY"), beingCleaned: by("CLEANING"), awaitingInspection: by("CLEAN"), inspectedReady: by("INSPECTED"),
+      openTasks: tasks,
+      openMaintenance: requests.length,
+      blockedRooms: requests.filter((r) => r.blocksRoom).length,
+      outOfOrder: requests.filter((r) => r.blocksRoom).slice(0, 5).map((r) => ({ id: r.id, room: r.room.number, reason: r.title })),
+    };
+  });
+}

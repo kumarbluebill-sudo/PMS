@@ -7,7 +7,8 @@ import { AppError } from "@/server/errors";
 import { sortAlerts, type Alert } from "@/server/domain/kpi";
 import { formatInr } from "@/server/money";
 import { audit } from "./audit";
-import { operations } from "./frontoffice";
+import { complaintAlerts } from "./feedback";
+import { operations, type Operations } from "./frontoffice";
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 const DAY_MS = 86_400_000;
@@ -20,11 +21,11 @@ export const isManagerView = (ctx: Pick<Ctx, "role" | "extra">) =>
  * Alerts are computed live from current data, so they can never be stale or invented. Only an acknowledgement or
  * resolution is stored (AlertAck), keyed by a stable kind+entity key.
  */
-export async function listAlerts(db: PrismaClient, ctx: Ctx, opts: { includeResolved?: boolean } = {}): Promise<Alert[]> {
+export async function listAlerts(db: PrismaClient, ctx: Ctx, opts: { includeResolved?: boolean; ops?: Operations } = {}): Promise<Alert[]> {
   authorize(ctx, "reservations.view");
   const propertyId = requireProperty(ctx);
   const can = (p: Parameters<typeof roleHasPermission>[1]) => roleHasPermission(ctx.role, p, ctx.extra);
-  const ops = await operations(db, ctx);
+  const ops = opts.ops ?? (await operations(db, ctx));
   const alerts: Alert[] = [];
   const add = (a: Alert) => alerts.push(a);
   const link = (id: string) => `/app/reservations/${id}`;
@@ -62,9 +63,14 @@ export async function listAlerts(db: PrismaClient, ctx: Ctx, opts: { includeReso
     }
     if (can("billing.view") && can("audit.view")) {
       const adj = await tx.folioEntry.findMany({ where: { propertyId, kind: { in: ["DISCOUNT", "REVERSAL"] }, postedAt: { gte: new Date(now - DAY_MS) } }, orderBy: { postedAt: "desc" }, take: 20 });
-      for (const e of adj) add({ key: `adj:${e.id}`, kind: "BILLING_ADJUSTMENT", severity: "INFO", title: `${e.kind === "DISCOUNT" ? "Discount" : "Reversal"} posted: ${formatInr(Math.abs(e.netMinor))}`, detail: e.reason ? `Reason: ${e.reason}` : e.description, href: `/app/billing/${e.folioId}` });
+      for (const e of adj) add({ key: `adj:${e.id}`, kind: "BILLING_ADJUSTMENT", severity: "INFO", title: `${e.kind === "DISCOUNT" ? "Discount" : "Reversal"} posted: ${formatInr(Math.abs(e.netMinor))}`, detail: e.reason ? `Reason: ${e.reason}` : e.description, href: `/app/guest-folios/${e.folioId}` });
     }
   });
+
+  if (can("feedback.view")) {
+    const fb = await complaintAlerts(db, ctx);
+    if (fb.open > 0) add({ key: "feedback-low", kind: "GUEST_COMPLAINT", severity: "WARNING", title: `${fb.open} low-rating guest complaint${fb.open === 1 ? "" : "s"} need follow-up`, detail: "Review the feedback and add a follow-up note.", href: "/app/feedback?rating=low" });
+  }
 
   // Attach acknowledgements; resolved alerts are hidden unless asked for.
   const acks = await withTenant(db, ctx.tenantId, (tx) => tx.alertAck.findMany({ where: { propertyId, alertKey: { in: alerts.map((a) => a.key) } } }));

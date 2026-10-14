@@ -51,17 +51,25 @@ export function activeHref(pathname: string, hrefs: string[]): string | null {
   return best;
 }
 
+export type SettingsLink = { href: string; label: string; hint: string };
+
 type Props = {
   groups: NavGroup[];
+  settingsLinks: SettingsLink[];
   brand: ReactNode;
   footer: ReactNode;
   children: ReactNode;
 };
 
-export default function AppShell({ groups, brand, footer, children }: Props) {
+export default function AppShell({ groups, settingsLinks, brand, footer, children }: Props) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [desktop, setDesktop] = useState(true);
+  const [userRail, setUserRail] = useState<boolean | null>(null);
+  const [gear, setGear] = useState(false);
+  const gearBtn = useRef<HTMLButtonElement>(null);
+  const gearClose = useRef<HTMLButtonElement>(null);
+  const gearWas = useRef(false);
   const menuBtn = useRef<HTMLButtonElement>(null);
   const closeBtn = useRef<HTMLButtonElement>(null);
   const wasOpen = useRef(false);
@@ -89,6 +97,19 @@ export default function AppShell({ groups, brand, footer, children }: Props) {
       menuBtn.current?.focus();
     }
   }, [open, desktop]);
+
+  // The command centre gets a narrow icon rail by default; anywhere else the full menu shows. A manual toggle wins.
+  const rail = desktop && (userRail ?? pathname.startsWith("/app/dashboard"));
+
+  useEffect(() => {
+    if (gear) {
+      gearClose.current?.focus();
+      gearWas.current = true;
+    } else if (gearWas.current) {
+      gearWas.current = false;
+      gearBtn.current?.focus();
+    }
+  }, [gear]);
 
   const hidden = !desktop && !open;
 
@@ -119,20 +140,20 @@ export default function AppShell({ groups, brand, footer, children }: Props) {
         aria-label="Main"
         inert={hidden}
         onKeyDown={(e) => e.key === "Escape" && open && setOpen(false)}
-        className={`app-chrome fixed inset-y-0 left-0 z-50 flex w-72 flex-col overflow-y-auto bg-brand-900 text-brand-100 transition-transform duration-150 lg:sticky lg:top-0 lg:h-screen lg:w-64 lg:shrink-0 lg:translate-x-0 ${open ? "translate-x-0" : "-translate-x-full max-lg:invisible"}`}
+        className={`app-chrome fixed inset-y-0 left-0 z-50 flex w-72 flex-col overflow-y-auto bg-brand-900 text-brand-100 transition-transform duration-150 lg:sticky lg:top-0 lg:h-screen ${rail ? "lg:w-[4.5rem]" : "lg:w-64"} lg:shrink-0 lg:translate-x-0 ${open ? "translate-x-0" : "-translate-x-full max-lg:invisible"}`}
       >
-        <div className="flex items-start justify-between gap-2 px-4 pb-3 pt-4">
-          <div className="min-w-0 flex-1">{brand}</div>
+        <div className={`flex items-start justify-between gap-2 pb-3 pt-4 ${rail ? "px-2" : "px-4"}`}>
+          <div className="min-w-0 flex-1">{rail ? <span aria-hidden className="mx-auto grid h-9 w-9 place-items-center rounded-md bg-gold-400 text-lg font-bold text-brand-950">M</span> : brand}</div>
           <button ref={closeBtn} type="button" onClick={() => setOpen(false)} className="grid h-8 w-8 shrink-0 place-items-center rounded-md hover:bg-brand-800 lg:hidden">
             <Icon name="close" className="h-5 w-5" />
             <span className="sr-only">Close menu</span>
           </button>
         </div>
 
-        <nav aria-label="Sections" className="flex-1 space-y-4 px-2 pb-4">
+        <nav aria-label="Sections" className={`flex-1 space-y-4 pb-4 ${rail ? "px-1" : "px-2"}`}>
           {groups.map((g) => (
             <div key={g.label}>
-              <p className="px-2 pb-1 text-xs font-semibold text-brand-300">{g.label}</p>
+              <p className={rail ? "sr-only" : "px-2 pb-1 text-xs font-semibold text-brand-300"}>{g.label}</p>{rail && <hr aria-hidden className="mx-3 mb-1 border-brand-800" />}
               <ul className="space-y-0.5">
                 {g.items.map((n) => {
                   const isActive = n.href === active;
@@ -142,11 +163,12 @@ export default function AppShell({ groups, brand, footer, children }: Props) {
                         href={n.href}
                         aria-current={isActive ? "page" : undefined}
                         onClick={() => setOpen(false)}
-                        className={`group relative flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors ${isActive ? "bg-brand-800 font-medium text-white" : "text-brand-100 hover:bg-brand-800/60 hover:text-white"}`}
+                        title={rail ? n.label : undefined}
+                        className={`group relative flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors ${rail ? "justify-center" : ""} ${isActive ? "bg-brand-800 font-medium text-white" : "text-brand-100 hover:bg-brand-800/60 hover:text-white"}`}
                       >
                         {isActive && <span aria-hidden className="absolute -left-2 top-1.5 bottom-1.5 w-1 rounded-r bg-gold-400" />}
                         <span className={isActive ? "text-gold-300" : "text-brand-300 group-hover:text-brand-100"}><Icon name={n.icon} /></span>
-                        {n.label}
+                        <span className={rail ? "sr-only" : undefined}>{n.label}</span>
                       </Link>
                     </li>
                   );
@@ -156,10 +178,61 @@ export default function AppShell({ groups, brand, footer, children }: Props) {
           ))}
         </nav>
 
-        <div className="sticky bottom-0 border-t border-brand-800 bg-brand-900 px-4 py-3">{footer}</div>
+        <div className={`sticky bottom-0 border-t border-brand-800 bg-brand-900 py-3 ${rail ? "px-1" : "px-4"}`}>
+          {!rail && <div className="mb-2">{footer}</div>}
+          <div className={`flex items-center gap-1 ${rail ? "flex-col" : "justify-between"}`}>
+            <button
+              ref={gearBtn}
+              type="button"
+              onClick={() => setGear(true)}
+              aria-haspopup="dialog"
+              title="Settings"
+              className="grid h-9 w-9 place-items-center rounded-md text-brand-100 hover:bg-brand-800"
+            >
+              <Icon name="settings" />
+              <span className="sr-only">Settings</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setUserRail(!rail)}
+              aria-pressed={rail}
+              title={rail ? "Expand menu" : "Collapse menu"}
+              className="hidden h-9 w-9 place-items-center rounded-md text-brand-100 hover:bg-brand-800 lg:grid"
+            >
+              <svg aria-hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" className={`h-[18px] w-[18px] transition-transform ${rail ? "rotate-180" : ""}`}><path d="M15 6l-6 6 6 6" /></svg>
+              <span className="sr-only">{rail ? "Expand menu" : "Collapse menu"}</span>
+            </button>
+          </div>
+        </div>
       </aside>
 
       <div className="min-w-0 flex-1">{children}</div>
+
+      {gear && <div aria-hidden onClick={() => setGear(false)} className="app-chrome fixed inset-0 z-[60] bg-slate-950/40" />}
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Settings"
+        inert={!gear}
+        onKeyDown={(e) => e.key === "Escape" && setGear(false)}
+        className={`app-chrome fixed inset-y-0 right-0 z-[70] flex w-80 max-w-[92vw] flex-col bg-white shadow-xl transition-transform duration-150 ${gear ? "translate-x-0" : "translate-x-full invisible"}`}
+      >
+        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+          <h2 className="text-sm font-semibold text-slate-900">Settings</h2>
+          <button ref={gearClose} type="button" onClick={() => setGear(false)} className="rounded-md border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-700">Close</button>
+        </div>
+        <ul className="flex-1 divide-y divide-slate-100 overflow-y-auto">
+          {settingsLinks.length === 0 && <li className="p-4 text-sm text-slate-600">You do not have access to any settings.</li>}
+          {settingsLinks.map((l) => (
+            <li key={l.href + l.label}>
+              <Link href={l.href} onClick={() => setGear(false)} className="block px-4 py-2.5 hover:bg-slate-50">
+                <span className="block text-sm font-medium text-slate-900">{l.label}</span>
+                <span className="block text-xs text-slate-600">{l.hint}</span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </div>
     </div>
   );
 }

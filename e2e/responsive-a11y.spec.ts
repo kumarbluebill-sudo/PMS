@@ -14,6 +14,7 @@ const PAGES = [
   "/app/settings/tax", "/app/settings/security", "/app/settings/notifications", "/app/settings/channels", "/app/settings/reports",
   "/app/settings/backup", "/app/settings/subscription", "/app/settings/system", "/app/settings/permissions", "/app/structure",
   "/app/rooms/plan", "/app/rooms/import", "/app/messages", "/onboarding",
+  "/app/operations", "/app/alerts", "/app/search?q=ab", "/app/dashboard/analytics",
 ];
 
 async function signUp(page: Page) {

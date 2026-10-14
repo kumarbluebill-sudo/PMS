@@ -1,4 +1,6 @@
-import AppShell, { type NavGroup, type IconName } from "@/components/AppShell";
+import AppHeader, { type QuickAction } from "@/components/AppHeader";
+import AppShell, { type NavGroup, type IconName, type SettingsLink } from "@/components/AppShell";
+import { propertyToday } from "@/server/services/roomBlocks";
 import { logoutAction, switchPropertyAction } from "@/app/actions";
 import { resendVerificationAction } from "@/app/account-actions";
 import { getCtx } from "@/server/session";
@@ -12,6 +14,8 @@ const GROUPS: { label: string; items: Def[] }[] = [
     label: "Front desk",
     items: [
       { href: "/app/dashboard", label: "Room board", perm: "rooms.view", icon: "home" },
+      { href: "/app/operations", label: "Today's operations", perm: "reservations.view", icon: "list" },
+      { href: "/app/alerts", label: "Alerts", perm: "reservations.view", icon: "shield" },
       { href: "/app/front-desk", label: "Front desk", perm: "frontdesk.checkin", icon: "desk" },
       { href: "/app/reservations", label: "Reservations", perm: "reservations.view", icon: "list" },
       { href: "/app/reservations/calendar", label: "Calendar", perm: "reservations.view", icon: "calendar" },
@@ -58,7 +62,6 @@ const GROUPS: { label: string; items: Def[] }[] = [
     items: [
       { href: "/app/users", label: "Users", perm: "users.manage", icon: "shield" },
       { href: "/app/audit-logs", label: "Audit log", perm: "audit.view", icon: "list" },
-      { href: "/app/settings", label: "Settings", perm: "settings.view", icon: "settings" },
     ],
   },
 ];
@@ -73,6 +76,31 @@ export default async function AppLayout({ children }: LayoutProps<"/app">) {
     items: g.items.filter((n) => roleHasPermission(ctx.role, n.perm, ctx.extra)).map(({ href, label, icon }) => ({ href, label, icon })),
   })).filter((g) => g.items.length > 0);
   const current = props.find((p) => p.id === ctx.propertyId);
+  const can = (p: Permission) => roleHasPermission(ctx.role, p, ctx.extra);
+  const businessDate = ctx.propertyId ? await propertyToday(getDb(), ctx) : new Date().toISOString().slice(0, 10);
+  const settingsLinks: SettingsLink[] = ([
+    ["/app/settings/reservations", "Front office and dashboard", "No-show review time, ID rules, refresh", "settings.view"],
+    ["/app/settings/rooms", "Room-status colours", "Names and colours shown on the board", "settings.view"],
+    ["/app/settings/general", "Hotel configuration", "Name, contact, time zone, policies", "settings.view"],
+    ["/app/structure", "Buildings and floors", "Where rooms are", "rooms.manage"],
+    ["/app/room-types", "Room categories", "Occupancy, rates, amenities", "rooms.manage"],
+    ["/app/users", "Users", "Accounts and access", "users.manage"],
+    ["/app/settings/permissions", "Roles and permissions", "What each role can do", "settings.view"],
+    ["/app/settings/notifications", "Notification preferences", "Alerts and templates", "settings.view"],
+    ["/app/settings/billing", "Invoice settings", "Layout, numbering, payment methods", "settings.view"],
+    ["/app/settings/tax", "GST and tax", "Rates and registration", "tax.manage"],
+    ["/app/settings", "All settings", "Everything else", "settings.view"],
+  ] as [string, string, string, Permission][]).filter(([, , , perm]) => can(perm)).map(([href, label, hint]) => ({ href, label, hint }));
+  const quick: QuickAction[] = ([
+    ["/app/reservations", "New reservation", "reservations.create", true],
+    [`/app/reservations?arrival=${businessDate}`, "Walk-in check-in", "frontdesk.checkin", false],
+    ["/app/search", "Guest search", "reservations.view", false],
+    ["/app/operations#unassigned", "Room allocation", "reservations.modify", false],
+    ["/app/operations#departures", "Check-out", "frontdesk.checkout", false],
+    ["/app/payments", "Collect payment", "payments.record", false],
+    ["/app/operations#arrivals", "Arrivals", "reservations.view", false],
+    ["/app/operations#departures", "Departures", "reservations.view", false],
+  ] as [string, string, Permission, boolean][]).filter(([, , perm]) => can(perm)).map(([href, label, , primary]) => ({ href, label, primary }));
 
   const brand = (
     <div>
@@ -107,7 +135,8 @@ export default async function AppLayout({ children }: LayoutProps<"/app">) {
   );
 
   return (
-    <AppShell groups={groups} brand={brand} footer={footer}>
+    <AppShell groups={groups} settingsLinks={settingsLinks} brand={brand} footer={footer}>
+      <AppHeader hotel={current?.name ?? "MK Hotel PMS"} businessDate={businessDate} role={ctx.role.toLowerCase().replaceAll("_", " ")} actions={quick} />
       <main className="mx-auto w-full max-w-[96rem] bg-page p-4 md:p-6">
         {!ctx.emailVerified && (
           <form action={resendVerificationAction} className="mb-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">

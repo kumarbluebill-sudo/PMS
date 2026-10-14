@@ -88,3 +88,28 @@ Verified by Vitest (248 tests, 27 files) and Playwright (4 tests incl. every new
 
 ### New environment variables (all optional)
 `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM` (WhatsApp-enabled sender, e.g. `+14155238886`). Without all three the app runs in test mode. Set the Twilio status-callback to nothing: the app sends its own callback URL (`$AUTH_URL/api/webhooks/twilio?t=<tenant>`) with each message, so `AUTH_URL` must be the public https address.
+
+## Front Office Command Centre (2026-10-15)
+Verified by Vitest (267 tests, 30 files, including `tests/integration/frontoffice.test.ts`) and Playwright (8 tests: command-centre views, full arrival to check-in flow, drawer and settings drawer, axe contrast and 390/768 px overflow on every new page). Migration `20261015100000_front_office`.
+
+| Area | Status | Notes |
+|---|---|---|
+| Header with hotel and business date, global search, alerts bell, profile; quick-action bar | Done | Search covers rooms, reservations and guests, each only if the viewer has the permission |
+| Narrow icon rail on the dashboard, expandable; settings gear drawer with permitted links only | Done | |
+| Command-centre layout: room grid about 72%, performance and alerts about 28%, independent scrolling; phone slide-over | Done | |
+| 18 performance tiles, each linking to a filtered list or worklist; occupancy vs yesterday | Done | Room revenue, ARR and RevPAR hidden without billing access |
+| Room tiles, table and floor-plan views; filters; status chips with live counts | Done | |
+| Today's Operations: 15 worklists, each row links to its reservation | Done | `/app/operations` |
+| Check-in workflow (registration, encrypted ID, verify ID, assign or change room, requests and VIP, advance link, registration confirmation print) | Done | `/app/check-in/[id]`; ID number never shown or audited |
+| Checkout control (charges, discounts, payments, balance, invoices, links to folio and settlement) | Done | Completion still goes through the existing settlement flow, which blocks silent write-offs |
+| Analytics: occupancy, ARR, RevPAR, revenue by night (posted vs estimated), by floor and category, sources, 7/14/30 days | Done | `/app/dashboard/analytics`; hand-drawn accessible SVG charts |
+| Alerts (derived live, severity, acknowledge, resolve with note, audited) and manager block | Done | `/app/alerts`; manager view = users with `audit.view` and `rooms.approve` |
+| No-show review: candidates after the configured time, staff confirmation with a note, never automatic | Done | Setting `frontoffice.noShowCutoffTime` |
+
+### Limits (honest list)
+- **Room nights are posted to folios only at checkout** (no night audit). Revenue for in-house nights is therefore an estimate from the booked rate, labelled as such. Posted and estimated amounts are shown separately.
+- Historical "out of order" nights are only known where a maintenance block recorded them; the live out-of-order flag applies to today onward.
+- A stay that moved rooms is attributed to its last room in the by-floor and by-category splits.
+- Early check-in and late checkout are recorded and shown; no fee is charged automatically. There is no separate Front Office Manager role; the manager view follows permissions.
+- ID photo upload and signature capture are not built. Notifications refresh on a timer (`frontoffice.dashboardRefreshSeconds`, default off) or on demand, not by push.
+- New settings (Settings > Reservations): `frontoffice.noShowCutoffTime`, `frontoffice.requireIdAtCheckin`, `frontoffice.dashboardRefreshSeconds`.

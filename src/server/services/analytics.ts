@@ -44,7 +44,7 @@ export type RangeKpis = {
   revenueVisible: boolean;
 };
 
-const rangeSchema = z.object({ from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), focus: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() });
+const rangeSchema = z.object({ from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), focus: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), days: z.number().int().min(1).max(62).optional() });
 
 /**
  * Occupancy, ARR and RevPAR for a date range.
@@ -63,7 +63,7 @@ export async function rangeKpis(db: PrismaClient, ctx: Ctx, input: unknown = {})
     const prop = await tx.property.findFirstOrThrow({ where: { id: propertyId }, select: { timezone: true } });
     const today = dateInZone(new Date(), prop.timezone);
     const from = f.from ?? today;
-    const to = f.to ?? addDays(from, 6);
+    const to = f.to ?? addDays(from, (f.days ?? 7) - 1);
     if (to < from) return rangeKpis(db, ctx, { from: to, to: from, focus: f.focus });
     const span = Math.round((toDate(to).getTime() - toDate(from).getTime()) / 86_400_000) + 1;
     if (span > MAX_DAYS) return rangeKpis(db, ctx, { from, to: addDays(from, MAX_DAYS - 1), focus: f.focus });

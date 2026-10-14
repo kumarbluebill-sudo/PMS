@@ -66,3 +66,41 @@ export function StatusKey({
     </ul>
   );
 }
+
+/** Compact horizontal status key with live counts. Each chip filters the board; colour is backed by icon and text. */
+export function StatusChips({
+  meta = STATUS_META,
+  counts,
+  active,
+  hrefFor,
+}: {
+  meta?: StatusMeta;
+  counts: Record<DisplayStatus, number>;
+  active?: DisplayStatus;
+  hrefFor: (s: DisplayStatus | null) => string;
+}) {
+  return (
+    <ul aria-label="Room status legend" className="flex flex-wrap gap-1.5">
+      {DISPLAY_STATUSES.map((s) => {
+        const m = meta[s];
+        const on = active === s;
+        const rooms = `${counts[s]} room${counts[s] === 1 ? "" : "s"}`;
+        return (
+          <li key={s}>
+            <a
+              href={hrefFor(on ? null : s)}
+              aria-current={on ? "true" : undefined}
+              title={m.hint}
+              aria-label={`${m.label}: ${rooms}. ${m.hint}. ${on ? "Select to show all." : "Select to filter."}`}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${m.chip} ${on ? "ring-2 ring-brand-700 ring-offset-1" : ""}`}
+            >
+              <span aria-hidden>{m.icon}</span>
+              {m.label}
+              <span className="rounded-full bg-white/70 px-1.5 tabular-nums">{counts[s]}</span>
+            </a>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
