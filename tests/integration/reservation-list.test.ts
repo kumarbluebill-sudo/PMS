@@ -7,8 +7,9 @@ import { registerTenant } from "@/server/services/tenant";
 import { createRoom, createRoomType } from "@/server/services/rooms";
 import { createGuest } from "@/server/services/guests";
 import { cancelReservation, createReservation, listReservationsPage, reservationTimeline, RESERVATION_PAGE_SIZE } from "@/server/services/reservations";
-import { moveRoom } from "@/server/services/stays";
-import { propertyToday } from "@/server/services/roomBlocks";
+import { moveRoom, rack } from "@/server/services/stays";
+import { propertyToday, reportIssue } from "@/server/services/roomBlocks";
+
 import { ADMIN_URL } from "./global-setup";
 
 const APP_URL = ADMIN_URL.replace(/\/\/[^@]+@/, "//pms_app:pms_app_pw@");
@@ -85,5 +86,28 @@ describe("change history", () => {
     expect(text).toMatch(/Room changed\|Guest asked for quieter room\|Owner/);
     expect(text).toMatch(/Status: confirmed → cancelled\|Change of plans/);
     await expect(reservationTimeline(app, other, id)).rejects.toThrow(/not found/i);
+  });
+});
+
+describe("room rack", () => {
+  it("lays out bars, blocks and conflicts, and applies filters", async () => {
+    const id = await book("Rack", 2, 5);
+    const plain = await rack(app, owner, { start: today, days: 14 });
+    const row = plain.rooms.find((r) => r.bars.some((b) => b.reservationId === id))!;
+    const room = row.id;
+    const number = row.number;
+    expect(row.bars).toHaveLength(1);
+    expect(row.bars[0]).toMatchObject({ col: 2, span: 3, conflict: false, status: "CONFIRMED" });
+
+    await reportIssue(app, owner, { roomId: room, category: "PLUMBING", title: "Pipe burst", mode: "MAINTENANCE_BLOCK", startDate: addDays(today, 3), expectedResolution: addDays(today, 4), acknowledgeBookings: true });
+    const blocked = (await rack(app, owner, { start: today, days: 14 })).rooms.find((r) => r.id === room)!;
+    expect(blocked.blocks[0]).toMatchObject({ col: 3, span: 2 });
+    expect(blocked.bars[0].conflict).toBe(true);
+
+    expect((await rack(app, owner, { start: today, days: 14, q: "rack" })).rooms.map((r) => r.id)).toEqual([room]);
+    expect((await rack(app, owner, { start: today, days: 14, q: number })).rooms.some((r) => r.id === room)).toBe(true);
+    const vacant = await rack(app, owner, { start: today, days: 14, show: "vacant" });
+    expect(vacant.rooms.some((r) => r.id === room)).toBe(false);
+    expect((await rack(app, other, { start: today, days: 14 })).rooms).toHaveLength(0);
   });
 });

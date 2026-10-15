@@ -4,6 +4,8 @@ import { authorize, requireProperty, type Ctx } from "@/server/auth/context";
 import { withTenant } from "@/server/db/withTenant";
 import { AppError } from "@/server/errors";
 import { nightsBetween } from "@/server/domain/stay";
+import { addDays as addDaysIso, barPlacement, stayEdges } from "@/server/domain/rack";
+import { blockOverlapsStay } from "@/server/domain/roomBlock";
 import { audit } from "./audit";
 import { findFreeRooms } from "./availability";
 
@@ -133,5 +135,69 @@ export async function updateProperty(db: PrismaClient, ctx: Ctx, input: unknown)
       before: { name: before.name, timezone: before.timezone }, after: { name: p.name, timezone: p.timezone },
     });
     return p;
+  });
+}
+
+export type RackFilter = { start: string; days: number; buildingId?: string; floorId?: string; roomTypeId?: string; q?: string; show?: "all" | "occupied" | "vacant" };
+
+/**
+ * Room rack: rooms by dates with reservation bars, maintenance blocks and conflict flags. A bar is flagged when it
+ * overlaps a block on the same room (the database already prevents two stays in one room).
+ */
+export async function rack(db: PrismaClient, ctx: Ctx, f: RackFilter) {
+  authorize(ctx, "reservations.view");
+  const propertyId = requireProperty(ctx);
+  day.parse(f.start);
+  const days = Math.min(60, Math.max(1, f.days));
+  const end = addDaysIso(f.start, days);
+  const q = f.q?.trim().toLowerCase();
+  return withTenant(db, ctx.tenantId, async (tx) => {
+    const [rooms, buildings, floors, types] = await Promise.all([
+      tx.room.findMany({
+        where: { propertyId, ...(f.buildingId && { buildingId: f.buildingId }), ...(f.floorId && { floorId: f.floorId }), ...(f.roomTypeId && { roomTypeId: f.roomTypeId }) },
+        include: { roomType: { select: { name: true } }, floorRef: { select: { label: true } }, building: { select: { name: true } } },
+        orderBy: { number: "asc" },
+      }),
+      tx.building.findMany({ where: { propertyId, active: true }, orderBy: { sortOrder: "asc" } }),
+      tx.floor.findMany({ where: { propertyId, active: true }, orderBy: [{ sortOrder: "asc" }, { level: "asc" }] }),
+      tx.roomType.findMany({ where: { propertyId }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    ]);
+    const roomIds = rooms.map((r) => r.id);
+    const [assignments, blocks] = await Promise.all([
+      tx.roomAssignment.findMany({
+        where: { propertyId, roomId: { in: roomIds }, arrival: { lt: toDate(end) }, departure: { gt: toDate(f.start) }, OR: [{ active: true }, { reservation: { status: "CHECKED_OUT" } }] },
+        include: { reservation: { include: { guest: { select: { name: true } } } } },
+      }),
+      tx.maintenanceRequest.findMany({
+        where: { propertyId, roomId: { in: roomIds }, blocksRoom: true, status: { not: "RESOLVED" } },
+        select: { roomId: true, title: true, mode: true, startDate: true, expectedResolution: true },
+      }),
+    ]);
+    const bars = assignments.map((a) => {
+      const r = a.reservation;
+      const place = barPlacement(iso(a.arrival), iso(a.departure), f.start, days)!;
+      const win = blocks.filter((b) => b.roomId === a.roomId).map((b) => ({ startDate: b.startDate ? iso(b.startDate) : null, expectedResolution: b.expectedResolution ? iso(b.expectedResolution) : null }));
+      const conflict = r.status !== "CHECKED_OUT" && win.some((w) => blockOverlapsStay(w, iso(a.arrival), iso(a.departure)));
+      return {
+        id: a.id, reservationId: r.id, roomId: a.roomId, reference: r.reference, guest: r.guest.name, status: r.status,
+        arrival: iso(a.arrival), departure: iso(a.departure), vip: r.vip, conflict, ...place,
+        ...stayEdges(iso(a.arrival), iso(a.departure), f.start, days),
+      };
+    }).filter((b) => b.span > 0);
+    const blockBars = blocks.flatMap((b) => {
+      const s = b.startDate ? iso(b.startDate) : f.start;
+      const e = b.expectedResolution ? addDaysIso(iso(b.expectedResolution), 1) : end;
+      const place = barPlacement(s, e, f.start, days);
+      return place ? [{ roomId: b.roomId, title: b.title, mode: b.mode, ...place }] : [];
+    });
+    const byRoom = (id: string) => bars.filter((b) => b.roomId === id);
+    let out = rooms.map((r) => ({
+      id: r.id, number: r.number, type: r.roomType.name, typeId: r.roomTypeId, building: r.building?.name ?? null, floor: r.floorRef?.label ?? (r.floor !== null ? `Floor ${r.floor}` : null),
+      housekeeping: r.housekeeping, outOfOrder: r.outOfOrder, bars: byRoom(r.id), blocks: blockBars.filter((b) => b.roomId === r.id),
+    }));
+    if (q) out = out.filter((r) => r.number.toLowerCase().includes(q) || r.bars.some((b) => b.guest.toLowerCase().includes(q) || b.reference.toLowerCase().includes(q)));
+    if (f.show === "occupied") out = out.filter((r) => r.bars.length > 0);
+    if (f.show === "vacant") out = out.filter((r) => r.bars.length === 0);
+    return { rooms: out, buildings, floors, types, days, start: f.start, end };
   });
 }
