@@ -12,9 +12,11 @@ import { BOOKING_SOURCES, LEGACY_SOURCES, discountedRate, normalizeMobile } from
 import { nightsBetween, stayNights } from "@/server/domain/stay";
 import { dateInZone } from "@/server/domain/roomStatus";
 import { audit } from "./audit";
-import { findFreeRooms, isOverlapError, newReference, toDate } from "./availability";
+import { findFreeRooms, isOverlapError, isReferenceClash, toDate, uniqueReference } from "./availability";
 import { ensureFolio, loadRules } from "./billing";
 import { recordPayment } from "./payments";
+import { phoneKey } from "@/server/domain/guest";
+import { findDuplicateGuests } from "./guests";
 import { loadPlans } from "./property";
 import { loadSettings } from "./settings";
 import { randomBytes } from "node:crypto";
@@ -208,6 +210,10 @@ const newGuestSchema = z.object({
   address: z.string().trim().max(300).optional(),
   idType: z.enum(ID_TYPES).optional(),
   idNumber: z.string().trim().max(40).optional(),
+  nationality: z.string().trim().max(60).optional(),
+  preferences: z.string().trim().max(500).optional(),
+  /** Staff confirmed this is a different person from the guest with the same phone or email. */
+  allowDuplicate: z.boolean().optional(),
 });
 
 const bookingSchema = z
@@ -303,9 +309,14 @@ export async function createBooking(
 
       let guestId = d.guestId;
       if (d.newGuest) {
+        if (!d.newGuest.allowDuplicate) {
+          const dup = await findDuplicateGuests(tx, ctx.tenantId, { phone: mobileIn, email: d.newGuest.email });
+          if (dup.length) throw new AppError("CONFLICT", `A guest with the same mobile number or email already exists: ${dup[0].name}. Select that guest, or confirm that this is a different person.`);
+        }
         const g = await tx.guest.create({
           data: {
-            tenantId: ctx.tenantId, name: d.newGuest.name, phone: mobile, email: d.newGuest.email, address: d.newGuest.address,
+            tenantId: ctx.tenantId, name: d.newGuest.name, phone: mobileIn?.trim(), phoneKey: phoneKey(mobileIn), email: d.newGuest.email, address: d.newGuest.address,
+            nationality: d.newGuest.nationality, preferences: d.newGuest.preferences,
             idType: d.newGuest.idNumber ? d.newGuest.idType ?? "OTHER" : d.newGuest.idType,
             idNumberEnc: d.newGuest.idNumber ? encryptSecret(d.newGuest.idNumber) : undefined,
             companyName: d.companyName,
@@ -318,7 +329,7 @@ export async function createBooking(
         if (!g) throw new AppError("NOT_FOUND", "Guest not found.");
         if (!g.phone && (mobile || opts.requireMobile !== false)) {
           if (!mobile) throw new AppError("VALIDATION", "This guest has no mobile number on file. Enter one.");
-          await tx.guest.update({ where: { id: g.id }, data: { phone: mobile } });
+          await tx.guest.update({ where: { id: g.id }, data: { phone: mobileIn?.trim(), phoneKey: phoneKey(mobileIn) } });
         }
       }
 
@@ -339,7 +350,7 @@ export async function createBooking(
         const children = share(d.children);
         const r = await tx.reservation.create({
           data: {
-            tenantId: ctx.tenantId, propertyId, reference: newReference(st["reservation.referencePrefix"]), guestId: guestId!, roomTypeId: d.roomTypeId,
+            tenantId: ctx.tenantId, propertyId, reference: await uniqueReference(tx, ctx.tenantId, st["reservation.referencePrefix"]), guestId: guestId!, roomTypeId: d.roomTypeId,
             source: d.source, arrival: toDate(d.arrival), departure: toDate(d.departure), adults, children,
             notes: d.notes, status: d.status, createdBy: ctx.userId, groupRef, companyName: d.companyName, agentName: d.agentName, externalRef: d.externalRef || null,
             ratePlan: quote.ratePlan?.name ?? d.ratePlan, ratePlanId: quote.ratePlan?.id ?? null, agreedRateMinor: quote.rateMinor, rateSnapshot: quote.snapshot as unknown as Prisma.InputJsonValue,
@@ -364,6 +375,7 @@ export async function createBooking(
     });
   } catch (e) {
     if (isOverlapError(e)) throw new AppError("CONFLICT", "A room was just taken by another booking. Please try again.");
+    if (isReferenceClash(e)) throw new AppError("CONFLICT", "The booking could not be numbered. Please try again.");
     throw e;
   }
 

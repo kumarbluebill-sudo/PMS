@@ -95,14 +95,14 @@ describe("quote (server-side price and availability)", () => {
 });
 
 describe("booking", () => {
-  it("creates a booking with a new guest, normalising the mobile and generating a unique reference", async () => {
+  it("creates a booking with a new guest, keeping the typed mobile with a search key, and generating a unique reference", async () => {
     const w = dates();
     const r = await createBooking(app, owner, { newGuest: guest({ mobile: "+91 98765-43210", email: "a@b.in", address: "1 Road", idType: "AADHAAR", idNumber: "123412341234" }), roomTypeId: deluxe, ...w, adults: 2, source: "PHONE", notes: "Late arrival" });
     const [res] = r.reservations;
     expect(res.reference).toMatch(/^MK-[0-9A-F]{8}$/);
     expect(res).toMatchObject({ status: "CONFIRMED", source: "PHONE", notes: "Late arrival", quotedTotalMinor: 900_000, groupRef: null });
     const g = await admin.guest.findUniqueOrThrow({ where: { id: res.guestId } });
-    expect(g).toMatchObject({ phone: "+919876543210", address: "1 Road", idType: "AADHAAR" });
+    expect(g).toMatchObject({ phone: "+91 98765-43210", phoneKey: "9876543210", address: "1 Road", idType: "AADHAAR" });
     expect(g.idNumberEnc).toBeTruthy();
     expect(g.idNumberEnc).not.toContain("1234"); // stored encrypted
     const refs = new Set<string>();

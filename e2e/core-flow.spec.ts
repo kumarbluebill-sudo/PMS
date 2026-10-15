@@ -97,7 +97,10 @@ test("owner registers, enrols MFA, runs a stay end to end, and it is audited", a
   await expect(page.getByText("1 Deluxe room(s) available for 2 night(s).")).toBeVisible();
   await expect(page.getByText("₹9,000.00").first()).toBeVisible();
   await expectAccessible(page, "reservation form with quote");
-  await page.getByLabel("Existing guest").selectOption({ label: "Asha Verma" });
+  // Guest recognition: typing part of the name offers the existing profile; choosing it uses that profile.
+  await page.getByLabel("Guest name").fill("Asha");
+  await page.getByRole("option", { name: /Asha Verma/ }).click();
+  await expect(page.getByText("existing guest. This booking uses their profile.")).toBeVisible();
   await page.getByLabel("Mobile number").fill("98765 43210");
   await page.getByRole("button", { name: "Save booking" }).click();
   await expect(page.getByRole("heading", { name: "Booking confirmation" })).toBeVisible();

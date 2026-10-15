@@ -202,6 +202,9 @@ model Room {
   layoutX        Int?
   layoutY        Int?
   name           String?
+  /// Do Not Disturb: a housekeeping access restriction, separate from cleaning state and occupancy.
+  dnd            Boolean  @default(false)
+  dndAt          DateTime?
   active         Boolean  @default(true)
   archivedAt     DateTime?
   notes          String?
@@ -237,13 +240,19 @@ model Guest {
   address      String?
   idType       String?
   idNumberEnc  String? // AES-GCM encrypted; shown masked
+  /// Last 10 digits of the phone, for matching across formats. `phone` keeps the text exactly as typed.
+  phoneKey     String?
+  nationality  String?
+  preferences  String?
   createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 
   tenant       Tenant        @relation(fields: [tenantId], references: [id])
   reservations Reservation[]
   folios       Folio[]
 
   @@index([tenantId])
+  @@index([tenantId, phoneKey])
   @@map("guests")
 }
 
@@ -286,6 +295,9 @@ model Reservation {
   /// Later changes to room-type or rate-plan prices never alter this booking.
   rateSnapshot            Json?
   ratePlanId              String?   @db.Uuid
+  /// When the guest actually left, and who completed the checkout.
+  actualDeparture         DateTime?
+  checkedOutBy            String?   @db.Uuid
 
   property    Property @relation(fields: [propertyId], references: [id])
   guest       Guest    @relation(fields: [guestId], references: [id])
@@ -346,15 +358,29 @@ model HousekeepingTask {
   propertyId String    @db.Uuid
   roomId     String    @db.Uuid
   kind       String    @default("DEPARTURE") // DEPARTURE | STAYOVER | PRIORITY
-  status     String    @default("PENDING") // PENDING | IN_PROGRESS | DONE | INSPECTED
+  status     String    @default("PENDING") // PENDING | IN_PROGRESS | AWAITING_INSPECTION | DONE | INSPECTED | CANCELLED
   assignedTo String?   @db.Uuid
   createdAt  DateTime  @default(now())
   doneAt     DateTime?
+  priority              String    @default("NORMAL") // NORMAL | HIGH | URGENT
+  /// The reservation whose departure created this task, when there is one.
+  reservationId         String?   @db.Uuid
+  note                  String?
+  startedAt             DateTime?
+  inspectionRequestedAt DateTime?
+  inspectedBy           String?   @db.Uuid
+  inspectedAt           DateTime?
+  inspectionResult      String? // PASSED | FAILED
+  updatedAt             DateTime  @default(now()) @updatedAt
+  updatedBy             String?   @db.Uuid
+  /// Bumped on every change. A form carries the version it loaded; a different current version means a conflict.
+  version               Int       @default(0)
 
   property Property @relation(fields: [propertyId], references: [id])
   room     Room     @relation(fields: [roomId], references: [id])
 
   @@index([tenantId, propertyId, status])
+  @@index([roomId])
   @@map("housekeeping_tasks")
 }
 
@@ -956,4 +982,39 @@ model RatePlanRate {
   @@unique([ratePlanId, roomTypeId])
   @@index([tenantId])
   @@map("rate_plan_rates")
+}
+
+// ---------- In-app notifications ----------
+
+/// One row per event. `dedupeKey` makes the same event notify once. Who sees it is decided by `audiencePerm`.
+model AppNotification {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @db.Uuid
+  propertyId   String   @db.Uuid
+  dedupeKey    String
+  kind         String
+  title        String
+  body         String?
+  href         String?
+  audiencePerm String
+  createdAt    DateTime @default(now())
+
+  reads NotificationRead[]
+
+  @@unique([propertyId, dedupeKey])
+  @@index([tenantId, propertyId, createdAt])
+  @@map("app_notifications")
+}
+
+model NotificationRead {
+  notificationId String   @db.Uuid
+  userId         String   @db.Uuid
+  tenantId       String   @db.Uuid
+  readAt         DateTime @default(now())
+
+  notification AppNotification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@id([notificationId, userId])
+  @@index([tenantId, userId])
+  @@map("notification_reads")
 }

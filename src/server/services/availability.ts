@@ -11,6 +11,21 @@ export const isOverlapError = (e: unknown) =>
 
 export const newReference = (prefix = "MK") => `${prefix}-${randomBytes(4).toString("hex").toUpperCase()}`;
 
+/**
+ * A reference no reservation of this business already uses. It checks before issuing and tries again on a clash; the
+ * unique index on (tenantId, reference) remains the final guard if two bookings pick the same one at once.
+ */
+export async function uniqueReference(tx: Prisma.TransactionClient, tenantId: string, prefix = "MK"): Promise<string> {
+  for (let i = 0; i < 6; i++) {
+    const ref = newReference(prefix);
+    if (!(await tx.reservation.findFirst({ where: { tenantId, reference: ref }, select: { id: true } }))) return ref;
+  }
+  throw new Error("Could not allocate a unique reservation reference.");
+}
+
+export const isReferenceClash = (e: unknown) =>
+  e instanceof Error && /reservations_tenantId_reference_key|\(tenantId, reference\)|Unique constraint failed.*reference/i.test(e.message + JSON.stringify((e as { meta?: unknown }).meta ?? ""));
+
 /** Rooms of a type that are sellable and free for [arrival, departure). */
 export async function findFreeRooms(
   tx: Prisma.TransactionClient,

@@ -48,7 +48,10 @@ test("front office: arrival to check-in to checkout control, with command centre
   await page.getByLabel("Check-out").fill(plus(arrival, 2));
   await page.getByRole("button", { name: "Check availability and price" }).click();
   await expect(page.getByText(/Deluxe room\(s\) available/)).toBeVisible();
-  await page.getByLabel("Existing guest").selectOption({ label: "Asha Verma" });
+  // Guest recognition: typing part of the name offers the existing profile; choosing it uses that profile.
+  await page.getByLabel("Guest name").fill("Asha");
+  await page.getByRole("option", { name: /Asha Verma/ }).click();
+  await expect(page.getByText("existing guest. This booking uses their profile.")).toBeVisible();
   await page.getByLabel("Mobile number").fill("98765 43210");
   await page.getByRole("button", { name: "Save booking" }).click();
   await expect(page.getByRole("heading", { name: "Booking confirmation" })).toBeVisible();

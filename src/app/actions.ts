@@ -150,7 +150,7 @@ export async function roomFloorAction(fd: FormData) {
 export async function addGuestAction(fd: FormData) {
   const ctx = await getCtx();
   await run("/app/guests", () =>
-    createGuest(getDb(), ctx, { name: str(fd.get("name")), phone: str(fd.get("phone")) || undefined, email: str(fd.get("email")) || undefined }),
+    createGuest(getDb(), ctx, { name: str(fd.get("name")), phone: str(fd.get("phone")) || undefined, email: str(fd.get("email")) || undefined }, { allowDuplicate: fd.get("allowDuplicate") === "on" }),
   );
 }
 
@@ -184,6 +184,7 @@ export async function addBookingAction(fd: FormData) {
             newGuest: {
               name: str(fd.get("g_name")), mobile: str(fd.get("g_mobile")), email: str(fd.get("g_email")) || undefined,
               address: str(fd.get("g_address")) || undefined, idType: str(fd.get("g_idType")) || undefined, idNumber: str(fd.get("g_idNumber")) || undefined,
+              nationality: str(fd.get("g_nationality")) || undefined, preferences: str(fd.get("g_preferences")) || undefined, allowDuplicate: fd.get("allowDuplicate") === "on",
             },
           }),
       roomTypeId: str(fd.get("roomTypeId")), roomId: str(fd.get("roomId")) || undefined, ratePlanId: str(fd.get("ratePlanId")) || undefined,

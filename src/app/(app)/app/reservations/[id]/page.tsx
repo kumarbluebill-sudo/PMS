@@ -35,8 +35,8 @@ export default async function StayDetail({ params, searchParams }: PageProps<"/a
             <dt className="text-slate-500">Room</dt><dd>{room ? `${room.number} (${room.roomType.name})` : "—"}</dd>
             <dt className="text-slate-500">Guests</dt><dd>{r.adults} adult(s), {r.children} child(ren)</dd>
             <dt className="text-slate-500">Source</dt><dd>{r.source}{r.externalRef ? ` · OTA ref ${r.externalRef}` : ""}</dd>
-            <dt className="text-slate-500">Guest</dt><dd>{r.guest.name}{r.guest.phone ? ` · ${r.guest.phone}` : ""}{r.guest.email ? ` · ${r.guest.email}` : ""}</dd>
-            {r.notes && (<><dt className="text-slate-500">Notes</dt><dd>{r.notes}</dd></>)}
+            <dt className="text-slate-500">Guest</dt><dd>{r.guest.name}{r.guest.phone ? ` · ${r.guest.phone}` : ""}{r.guest.email ? ` · ${r.guest.email}` : ""}{roleHasPermission(ctx.role, "guests.view", ctx.extra) && <Link href={`/app/guests/${r.guestId}`} className="ml-2 text-xs underline">Guest profile and history</Link>}</dd>
+            {r.notes && (<><dt className="text-slate-500">Requests for this stay</dt><dd>{r.notes}</dd></>)}
           </dl>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <ReservationActions id={r.id} status={r.status} ctx={ctx} back={back} />

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { addBookingAction } from "@/app/actions";
+import GuestPicker from "@/components/GuestPicker";
 import { btn, btnGhost, Card, ErrorBanner, Field, inr, input, PageHeader } from "@/app/ui";
 import { roleHasPermission } from "@/server/auth/permissions";
 import { getDb } from "@/server/db/client";
@@ -8,7 +9,6 @@ import { BOOKING_SOURCES, SOURCE_LABELS } from "@/server/domain/quote";
 import { getCtx } from "@/server/session";
 import { availabilityByType, quoteStay, ID_TYPES, type Quote } from "@/server/services/booking";
 import { listRoomTypes } from "@/server/services/rooms";
-import { searchGuests } from "@/server/services/guests";
 import { listRatePlans } from "@/server/services/property";
 import { propertyToday } from "@/server/services/roomBlocks";
 import { settingsFor } from "@/server/services/settings";
@@ -22,11 +22,7 @@ export default async function Reservations({ searchParams }: PageProps<"/app/res
   const db = getDb();
   const can = (p: Parameters<typeof roleHasPermission>[1]) => roleHasPermission(ctx.role, p, ctx.extra);
   const st = await settingsFor(db, ctx);
-  const [types, guests, today] = await Promise.all([
-    listRoomTypes(db, ctx),
-    can("guests.view") ? searchGuests(db, ctx) : Promise.resolve([]),
-    propertyToday(db, ctx),
-  ]);
+  const [types, today] = await Promise.all([listRoomTypes(db, ctx), propertyToday(db, ctx)]);
 
   const v = {
     roomTypeId: one(sp.roomTypeId) || types[0]?.id || "",
@@ -156,16 +152,7 @@ export default async function Reservations({ searchParams }: PageProps<"/app/res
                 {(["roomTypeId", "roomId", "arrival", "departure", "rooms", "adults", "children", "discountPct", "discountAmt", "ratePlanId"] as const).map((k) => (
                   <input key={k} type="hidden" name={k} value={v[k]} />
                 ))}
-                {can("guests.view") && guests.length > 0 && (
-                  <Field label="Existing guest">
-                    <select name="guestId" defaultValue="" className={input}>
-                      <option value="">New guest (fill in below)</option>
-                      {guests.map((g) => <option key={g.id} value={g.id}>{g.name}{g.phone ? ` · ${g.phone}` : ""}</option>)}
-                    </select>
-                  </Field>
-                )}
-                <Field label="Guest name"><input name="g_name" className={input} autoComplete="off" /></Field>
-                <Field label="Mobile number"><input name="g_mobile" type="tel" inputMode="tel" className={input} autoComplete="off" /></Field>
+                <GuestPicker canLookup={can("guests.view")} canCreate={can("guests.manage")} />
                 <Field label="Booking source">
                   <select name="source" defaultValue="WALK_IN" className={input}>
                     {BOOKING_SOURCES.filter((s) => st["reservation.enabledSources"].includes(s)).map((s) => <option key={s} value={s}>{SOURCE_LABELS[s]}</option>)}
@@ -199,6 +186,8 @@ export default async function Reservations({ searchParams }: PageProps<"/app/res
                     <Field label="Travel agent"><input name="agentName" className={input} /></Field>
                     <Field label="OTA / channel booking reference"><input name="externalRef" maxLength={60} className={input} /></Field>
                     <Field label="Guest address"><input name="g_address" className={input} /></Field>
+                    <Field label="Nationality"><input name="g_nationality" maxLength={60} className={input} /></Field>
+                    <Field label="Guest preferences (saved to the profile)"><input name="g_preferences" maxLength={500} className={input} /></Field>
                     <Field label="ID type (where legally required)">
                       <select name="g_idType" defaultValue="" className={input}>
                         <option value="">Not recorded</option>
