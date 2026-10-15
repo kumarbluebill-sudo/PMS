@@ -1,6 +1,7 @@
 import type { PrismaClient } from "@prisma/client";
 import { AppError } from "@/server/errors";
-import { assertPermission, type Permission, type RoleKey } from "./permissions";
+import { assertPermission, READ_ONLY_SAFE, type Permission, type RoleKey } from "./permissions";
+import { isReadOnly, type SubStatus } from "@/server/domain/subscription";
 
 export type Ctx = {
   userId: string;
@@ -13,6 +14,9 @@ export type Ctx = {
   requestId: string;
   mfaEnabled: boolean;
   emailVerified: boolean;
+  /** The hotel's subscription has lapsed: viewing and exporting work, changes are refused. */
+  readOnly?: boolean;
+  subscriptionStatus?: SubStatus;
 };
 
 export const ALL_PROPERTY_ROLES: RoleKey[] = ["HOTEL_OWNER", "GROUP_ADMIN", "GENERAL_MANAGER"];
@@ -40,9 +44,12 @@ export async function loadContext(
   if (!membership) throw new AppError("FORBIDDEN", "You do not belong to any hotel account.");
 
   const role = membership.role as RoleKey;
-  const props = await db.$transaction(async (tx) => {
+  const { props, sub, pastDueReadOnly } = await db.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT set_config('app.tenant_id', ${membership.tenantId}, true)`;
-    return tx.property.findMany({ where: { tenantId: membership.tenantId }, select: { id: true } });
+    const props = await tx.property.findMany({ where: { tenantId: membership.tenantId }, select: { id: true } });
+    const sub = await tx.subscription.findUnique({ where: { tenantId: membership.tenantId }, select: { status: true } });
+    const flag = sub ? await tx.platformSetting.findUnique({ where: { key: "saas.pastDueReadOnly" } }) : null;
+    return { props, sub, pastDueReadOnly: flag?.value === true };
   });
   const accessible = ALL_PROPERTY_ROLES.includes(role)
     ? props.map((p) => p.id)
@@ -61,11 +68,16 @@ export async function loadContext(
     requestId: crypto.randomUUID(),
     mfaEnabled: user.mfaEnabled,
     emailVerified: !!user.emailVerifiedAt,
+    ...(sub && { subscriptionStatus: sub.status as SubStatus, readOnly: isReadOnly(sub.status as SubStatus, { pastDueReadOnly }) }),
   };
 }
 
 export function authorize(ctx: Ctx, permission: Permission): void {
   assertPermission(ctx.role, permission, ctx.extra);
+  // One place enforces read-only mode: every service calls authorize, so a lapsed account cannot change anything.
+  if (ctx.readOnly && !READ_ONLY_SAFE.test(permission)) {
+    throw new AppError("READ_ONLY", "Your subscription is not active, so this account is read-only. You can still view and export your data. Open Subscription & Plans to renew.");
+  }
 }
 
 export function requireProperty(ctx: Ctx): string {

@@ -1,6 +1,6 @@
 export class AppError extends Error {
   constructor(
-    public readonly code: "NOT_FOUND" | "CONFLICT" | "VALIDATION" | "UNAUTHENTICATED" | "FORBIDDEN",
+    public readonly code: "NOT_FOUND" | "CONFLICT" | "VALIDATION" | "UNAUTHENTICATED" | "FORBIDDEN" | "PLAN_LIMIT" | "READ_ONLY",
     message: string,
   ) {
     super(message);

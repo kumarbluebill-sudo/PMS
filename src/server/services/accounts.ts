@@ -9,6 +9,7 @@ import { decryptSecret, encryptSecret, hashToken, newToken } from "@/server/cryp
 import { withTenant } from "@/server/db/withTenant";
 import { AppError } from "@/server/errors";
 import { audit } from "./audit";
+import { assertWithinPlan } from "./subscription";
 
 const HOUR = 3_600_000;
 export const passwordSchema = z.string().min(10, "Use at least 10 characters").max(200);
@@ -120,6 +121,10 @@ export async function inviteMember(
   if (await db.user.findUnique({ where: { email: d.email } })) {
     throw new AppError("CONFLICT", "A user with this email already exists.");
   }
+  await withTenant(db, ctx.tenantId, async (tx) => {
+    const pending = await tx.$queryRaw<{ n: bigint }[]>`SELECT count(*) AS n FROM auth_tokens WHERE kind = 'INVITE' AND "tenantId" = ${ctx.tenantId}::uuid AND "usedAt" IS NULL AND "expiresAt" > now()`;
+    await assertWithinPlan(tx, ctx.tenantId, "users", 1, Number(pending[0]?.n ?? 0));
+  });
   const { token, hash } = newToken();
   await db.authToken.create({
     data: {

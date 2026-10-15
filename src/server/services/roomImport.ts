@@ -4,6 +4,7 @@ import { authorize, requireProperty, type Ctx } from "@/server/auth/context";
 import { withTenant } from "@/server/db/withTenant";
 import { AppError } from "@/server/errors";
 import { audit } from "./audit";
+import { assertWithinPlan } from "./subscription";
 
 export const IMPORT_HEADERS = ["room_number", "category", "building", "floor"] as const;
 export const MAX_IMPORT_ROWS = 1000;
@@ -117,6 +118,7 @@ export async function commitImport(db: PrismaClient, ctx: Ctx, grid: string[][])
   if (preview.errors.length) throw new AppError("VALIDATION", `Fix ${preview.errors.length} error(s) before importing.`);
   const propertyId = requireProperty(ctx);
   return withTenant(db, ctx.tenantId, async (tx) => {
+    await assertWithinPlan(tx, ctx.tenantId, "rooms", preview.rows.length);
     const types = await tx.roomType.findMany({ where: { propertyId } });
     const floors = await tx.floor.findMany({ where: { propertyId }, include: { building: true } });
     for (const r of preview.rows) {

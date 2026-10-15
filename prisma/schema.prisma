@@ -16,26 +16,27 @@ model Tenant {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  memberships Membership[]
-  properties  Property[]
-  guests      Guest[]
-  auditLogs   AuditLog[]
+  memberships  Membership[]
+  properties   Property[]
+  guests       Guest[]
+  auditLogs    AuditLog[]
+  subscription Subscription?
 
   @@map("tenants")
 }
 
 model User {
-  id           String   @id @default(uuid()) @db.Uuid
-  email        String   @unique
-  name         String
-  passwordHash String
-  active       Boolean  @default(true)
-  mfaSecretEnc String?
-  mfaEnabled   Boolean  @default(false)
+  id              String    @id @default(uuid()) @db.Uuid
+  email           String    @unique
+  name            String
+  passwordHash    String
+  active          Boolean   @default(true)
+  mfaSecretEnc    String?
+  mfaEnabled      Boolean   @default(false)
   emailVerifiedAt DateTime?
-  sessionEpoch Int      @default(0) // bump to revoke all sessions
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  sessionEpoch    Int       @default(0) // bump to revoke all sessions
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   memberships Membership[]
 
@@ -43,16 +44,16 @@ model User {
 }
 
 model Membership {
-  id        String   @id @default(uuid()) @db.Uuid
-  tenantId  String   @db.Uuid
-  userId    String   @db.Uuid
-  role      String // RoleKey
+  id               String   @id @default(uuid()) @db.Uuid
+  tenantId         String   @db.Uuid
+  userId           String   @db.Uuid
+  role             String // RoleKey
   extraPermissions String[] @default([])
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now())
 
-  tenant     Tenant     @relation(fields: [tenantId], references: [id])
-  user       User       @relation(fields: [userId], references: [id])
+  tenant     Tenant         @relation(fields: [tenantId], references: [id])
+  user       User           @relation(fields: [userId], references: [id])
   properties UserProperty[]
 
   @@unique([tenantId, userId])
@@ -60,19 +61,19 @@ model Membership {
 }
 
 model Property {
-  id            String   @id @default(uuid()) @db.Uuid
-  tenantId      String   @db.Uuid
-  name          String
-  address       String?
-  timezone      String   @default("Asia/Kolkata")
-  currency      String   @default("INR")
-  checkInTime   String   @default("14:00")
-  checkOutTime  String   @default("11:00")
-  legalName     String?
-  gstRegistered Boolean  @default(false)
-  gstin         String?
-  gstStateCode  String?
-  invoicePrefix String   @default("INV")
+  id                 String   @id @default(uuid()) @db.Uuid
+  tenantId           String   @db.Uuid
+  name               String
+  address            String?
+  timezone           String   @default("Asia/Kolkata")
+  currency           String   @default("INR")
+  checkInTime        String   @default("14:00")
+  checkOutTime       String   @default("11:00")
+  legalName          String?
+  gstRegistered      Boolean  @default(false)
+  gstin              String?
+  gstStateCode       String?
+  invoicePrefix      String   @default("INV")
   // Profile
   code               String?
   phone              String?
@@ -83,10 +84,10 @@ model Property {
   imageUrls          String[] @default([])
   operationalAddress String?
   status             String   @default("ACTIVE") // ACTIVE | INACTIVE | ARCHIVED
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
-  tenant       Tenant         @relation(fields: [tenantId], references: [id])
+  tenant       Tenant               @relation(fields: [tenantId], references: [id])
   users        UserProperty[]
   roomTypes    RoomType[]
   rooms        Room[]
@@ -119,28 +120,28 @@ model UserProperty {
 // ---------- Rooms ----------
 
 model RoomType {
-  id           String @id @default(uuid()) @db.Uuid
-  tenantId     String @db.Uuid
-  propertyId   String @db.Uuid
-  name         String
-  maxAdults    Int    @default(2)
-  maxChildren  Int    @default(0)
-  baseRateMinor Int   @default(0) // integer minor units (paise)
+  id                  String   @id @default(uuid()) @db.Uuid
+  tenantId            String   @db.Uuid
+  propertyId          String   @db.Uuid
+  name                String
+  maxAdults           Int      @default(2)
+  maxChildren         Int      @default(0)
+  baseRateMinor       Int      @default(0) // integer minor units (paise)
   /// Adults included in the base rate; each extra adult is charged per night.
-  baseOccupancy       Int @default(2)
-  extraAdultRateMinor Int @default(0)
-  extraChildRateMinor Int @default(0) // per child per night; 0 = children stay free
-  description  String?
-  bedConfig    String?
-  amenities    String[] @default([])
-  code         String?
-  active       Boolean  @default(true)
-  imageUrls    String[] @default([])
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @default(now()) @updatedAt
+  baseOccupancy       Int      @default(2)
+  extraAdultRateMinor Int      @default(0)
+  extraChildRateMinor Int      @default(0) // per child per night; 0 = children stay free
+  description         String?
+  bedConfig           String?
+  amenities           String[] @default([])
+  code                String?
+  active              Boolean  @default(true)
+  imageUrls           String[] @default([])
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @default(now()) @updatedAt
 
-  property Property @relation(fields: [propertyId], references: [id])
-  rooms    Room[]
+  property  Property       @relation(fields: [propertyId], references: [id])
+  rooms     Room[]
   planRates RatePlanRate[]
 
   @@index([tenantId, propertyId])
@@ -187,37 +188,37 @@ model Floor {
 }
 
 model Room {
-  id             String  @id @default(uuid()) @db.Uuid
-  tenantId       String  @db.Uuid
-  propertyId     String  @db.Uuid
-  roomTypeId     String  @db.Uuid
-  number         String
+  id           String    @id @default(uuid()) @db.Uuid
+  tenantId     String    @db.Uuid
+  propertyId   String    @db.Uuid
+  roomTypeId   String    @db.Uuid
+  number       String
   // Operational status; separate from booking state.
-  housekeeping   String  @default("CLEAN") // CLEAN | DIRTY | CLEANING | INSPECTED
-  outOfOrder     Boolean @default(false)
-  floor          Int?
-  buildingId     String? @db.Uuid
-  floorId        String? @db.Uuid
+  housekeeping String    @default("CLEAN") // CLEAN | DIRTY | CLEANING | INSPECTED
+  outOfOrder   Boolean   @default(false)
+  floor        Int?
+  buildingId   String?   @db.Uuid
+  floorId      String?   @db.Uuid
   /// Tile position on the floor plan grid (0-based); null = not yet placed.
-  layoutX        Int?
-  layoutY        Int?
-  name           String?
+  layoutX      Int?
+  layoutY      Int?
+  name         String?
   /// Do Not Disturb: a housekeeping access restriction, separate from cleaning state and occupancy.
-  dnd            Boolean  @default(false)
-  dndAt          DateTime?
-  active         Boolean  @default(true)
-  archivedAt     DateTime?
-  notes          String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @default(now()) @updatedAt
+  dnd          Boolean   @default(false)
+  dndAt        DateTime?
+  active       Boolean   @default(true)
+  archivedAt   DateTime?
+  notes        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @default(now()) @updatedAt
 
-  property    Property   @relation(fields: [propertyId], references: [id])
-  roomType    RoomType   @relation(fields: [roomTypeId], references: [id])
-  building    Building?  @relation(fields: [buildingId], references: [id])
-  floorRef    Floor?     @relation(fields: [floorId], references: [id])
-  assignments RoomAssignment[]
-  tasks       HousekeepingTask[]
-  maintenance MaintenanceRequest[]
+  property      Property             @relation(fields: [propertyId], references: [id])
+  roomType      RoomType             @relation(fields: [roomTypeId], references: [id])
+  building      Building?            @relation(fields: [buildingId], references: [id])
+  floorRef      Floor?               @relation(fields: [floorId], references: [id])
+  assignments   RoomAssignment[]
+  tasks         HousekeepingTask[]
+  maintenance   MaintenanceRequest[]
   statusHistory RoomStatusHistory[]
 
   @@unique([propertyId, number])
@@ -228,12 +229,12 @@ model Room {
 // ---------- Guests & reservations ----------
 
 model Guest {
-  id        String   @id @default(uuid()) @db.Uuid
-  tenantId  String   @db.Uuid
-  name      String
-  phone     String?
-  email     String?
-  notes     String?
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @db.Uuid
+  name         String
+  phone        String?
+  email        String?
+  notes        String?
   companyName  String?
   gstin        String?
   gstStateCode String?
@@ -244,8 +245,8 @@ model Guest {
   phoneKey     String?
   nationality  String?
   preferences  String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @default(now()) @updatedAt
 
   tenant       Tenant        @relation(fields: [tenantId], references: [id])
   reservations Reservation[]
@@ -257,30 +258,30 @@ model Guest {
 }
 
 model Reservation {
-  id          String   @id @default(uuid()) @db.Uuid
-  tenantId    String   @db.Uuid
-  propertyId  String   @db.Uuid
-  reference   String
-  guestId     String   @db.Uuid
-  roomTypeId  String   @db.Uuid
-  source      String   @default("DIRECT")
-  arrival     DateTime @db.Date
-  departure   DateTime @db.Date
-  adults      Int      @default(1)
-  children    Int      @default(0)
-  status      String   @default("CONFIRMED")
-  notes       String?
-  createdBy   String   @db.Uuid
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                      String    @id @default(uuid()) @db.Uuid
+  tenantId                String    @db.Uuid
+  propertyId              String    @db.Uuid
+  reference               String
+  guestId                 String    @db.Uuid
+  roomTypeId              String    @db.Uuid
+  source                  String    @default("DIRECT")
+  arrival                 DateTime  @db.Date
+  departure               DateTime  @db.Date
+  adults                  Int       @default(1)
+  children                Int       @default(0)
+  status                  String    @default("CONFIRMED")
+  notes                   String?
+  createdBy               String    @db.Uuid
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
   // Booking details (multi-room bookings share a groupRef)
-  groupRef        String?
-  companyName     String?
-  agentName       String?
-  ratePlan        String  @default("STANDARD")
-  agreedRateMinor Int? // nightly rate when different from the room type base rate (discount applied)
-  discountReason  String?
-  quotedTotalMinor Int? // estimate shown at booking time; the folio is the source of truth
+  groupRef                String?
+  companyName             String?
+  agentName               String?
+  ratePlan                String    @default("STANDARD")
+  agreedRateMinor         Int? // nightly rate when different from the room type base rate (discount applied)
+  discountReason          String?
+  quotedTotalMinor        Int? // estimate shown at booking time; the folio is the source of truth
   // Front office
   vip                     Boolean   @default(false)
   etaTime                 String? // expected arrival time, HH:MM
@@ -299,13 +300,13 @@ model Reservation {
   actualDeparture         DateTime?
   checkedOutBy            String?   @db.Uuid
 
-  property    Property @relation(fields: [propertyId], references: [id])
-  guest       Guest    @relation(fields: [guestId], references: [id])
-  assignments RoomAssignment[]
-  history     ReservationStatusHistory[]
+  property      Property                   @relation(fields: [propertyId], references: [id])
+  guest         Guest                      @relation(fields: [guestId], references: [id])
+  assignments   RoomAssignment[]
+  history       ReservationStatusHistory[]
   feedback      Feedback[]
   feedbackLinks FeedbackLink[]
-  folios      Folio[]
+  folios        Folio[]
 
   @@unique([tenantId, reference])
   @@index([tenantId, propertyId, arrival])
@@ -353,15 +354,15 @@ model RoomAssignment {
 // ---------- Operations ----------
 
 model HousekeepingTask {
-  id         String    @id @default(uuid()) @db.Uuid
-  tenantId   String    @db.Uuid
-  propertyId String    @db.Uuid
-  roomId     String    @db.Uuid
-  kind       String    @default("DEPARTURE") // DEPARTURE | STAYOVER | PRIORITY
-  status     String    @default("PENDING") // PENDING | IN_PROGRESS | AWAITING_INSPECTION | DONE | INSPECTED | CANCELLED
-  assignedTo String?   @db.Uuid
-  createdAt  DateTime  @default(now())
-  doneAt     DateTime?
+  id                    String    @id @default(uuid()) @db.Uuid
+  tenantId              String    @db.Uuid
+  propertyId            String    @db.Uuid
+  roomId                String    @db.Uuid
+  kind                  String    @default("DEPARTURE") // DEPARTURE | STAYOVER | PRIORITY
+  status                String    @default("PENDING") // PENDING | IN_PROGRESS | AWAITING_INSPECTION | DONE | INSPECTED | CANCELLED
+  assignedTo            String?   @db.Uuid
+  createdAt             DateTime  @default(now())
+  doneAt                DateTime?
   priority              String    @default("NORMAL") // NORMAL | HIGH | URGENT
   /// The reservation whose departure created this task, when there is one.
   reservationId         String?   @db.Uuid
@@ -490,15 +491,15 @@ model Setting {
 }
 
 model MaintenanceRequest {
-  id         String    @id @default(uuid()) @db.Uuid
-  tenantId   String    @db.Uuid
-  propertyId String    @db.Uuid
-  roomId     String    @db.Uuid
-  title      String
-  status     String    @default("OPEN") // OPEN | IN_PROGRESS | RESOLVED
-  blocksRoom Boolean   @default(false)
-  createdAt  DateTime  @default(now())
-  resolvedAt DateTime?
+  id                 String    @id @default(uuid()) @db.Uuid
+  tenantId           String    @db.Uuid
+  propertyId         String    @db.Uuid
+  roomId             String    @db.Uuid
+  title              String
+  status             String    @default("OPEN") // OPEN | IN_PROGRESS | RESOLVED
+  blocksRoom         Boolean   @default(false)
+  createdAt          DateTime  @default(now())
+  resolvedAt         DateTime?
   // Out-of-order / maintenance block details
   mode               String    @default("REPORT") // REPORT | MAINTENANCE_BLOCK | OUT_OF_ORDER
   category           String    @default("OTHER")
@@ -564,15 +565,15 @@ model AuthToken {
 
 /// Development/placeholder email transport: messages are recorded here until a real provider is configured.
 model EmailOutbox {
-  id        String   @id @default(uuid()) @db.Uuid
-  toEmail   String
-  subject   String
-  body      String
-  status    String   @default("QUEUED") // QUEUED | ACCEPTED | DELIVERED | BOUNCED | FAILED | TEST (SENT is the old value)
-  createdAt DateTime @default(now())
-  tenantId       String?  @db.Uuid
-  reservationId  String?  @db.Uuid
-  kind           String   @default("ACCOUNT") // ACCOUNT | CONFIRMATION
+  id             String    @id @default(uuid()) @db.Uuid
+  toEmail        String
+  subject        String
+  body           String
+  status         String    @default("QUEUED") // QUEUED | ACCEPTED | DELIVERED | BOUNCED | FAILED | TEST (SENT is the old value)
+  createdAt      DateTime  @default(now())
+  tenantId       String?   @db.Uuid
+  reservationId  String?   @db.Uuid
+  kind           String    @default("ACCOUNT") // ACCOUNT | CONFIRMATION
   provider       String?
   providerId     String?
   error          String?
@@ -666,7 +667,7 @@ model FolioEntry {
   postedBy          String    @db.Uuid
   postedAt          DateTime  @default(now())
 
-  folio Folio       @relation(fields: [folioId], references: [id])
+  folio Folio        @relation(fields: [folioId], references: [id])
   line  InvoiceLine?
 
   @@unique([tenantId, idempotencyKey])
@@ -760,18 +761,18 @@ model Invoice {
 }
 
 model InvoiceLine {
-  id           String @id @default(uuid()) @db.Uuid
-  tenantId     String @db.Uuid
-  invoiceId    String @db.Uuid
-  folioEntryId String @unique @db.Uuid
+  id           String  @id @default(uuid()) @db.Uuid
+  tenantId     String  @db.Uuid
+  invoiceId    String  @db.Uuid
+  folioEntryId String  @unique @db.Uuid
   description  String
   sacCode      String?
-  quantity     Int    @default(1)
+  quantity     Int     @default(1)
   netMinor     Int
-  cgstMinor    Int    @default(0)
-  sgstMinor    Int    @default(0)
-  igstMinor    Int    @default(0)
-  cessMinor    Int    @default(0)
+  cgstMinor    Int     @default(0)
+  sgstMinor    Int     @default(0)
+  igstMinor    Int     @default(0)
+  cessMinor    Int     @default(0)
   grossMinor   Int
   taxDetail    Json?
 
@@ -903,22 +904,22 @@ model GuestConsent {
 
 /// One row per message attempt target. Message text is not stored; only the template key and delivery facts.
 model MessageLog {
-  id               String   @id @default(uuid()) @db.Uuid
-  tenantId         String   @db.Uuid
-  propertyId       String   @db.Uuid
-  guestId          String   @db.Uuid
-  reservationId    String?  @db.Uuid
-  templateKey      String
-  toMasked         String
-  provider         String // TWILIO | TEST
+  id                String   @id @default(uuid()) @db.Uuid
+  tenantId          String   @db.Uuid
+  propertyId        String   @db.Uuid
+  guestId           String   @db.Uuid
+  reservationId     String?  @db.Uuid
+  templateKey       String
+  toMasked          String
+  provider          String // TWILIO | TEST
   providerMessageId String?
-  status           String // PENDING | SENT | DELIVERED | FAILED | TEST
-  error            String?
-  attempts         Int      @default(0)
-  idempotencyKey   String
-  createdBy        String   @db.Uuid
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  status            String // PENDING | SENT | DELIVERED | FAILED | TEST
+  error             String?
+  attempts          Int      @default(0)
+  idempotencyKey    String
+  createdBy         String   @db.Uuid
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   @@unique([propertyId, idempotencyKey])
   @@index([tenantId, propertyId, createdAt])
@@ -977,15 +978,15 @@ model RatePlan {
 }
 
 model RatePlanRate {
-  id                        String  @id @default(uuid()) @db.Uuid
-  tenantId                  String  @db.Uuid
-  ratePlanId                String  @db.Uuid
-  roomTypeId                String  @db.Uuid
-  weekdayRateMinor          Int
-  weekendRateMinor          Int?
-  singleOccupancyRateMinor  Int?
-  extraAdultRateMinor       Int?
-  extraChildRateMinor       Int?
+  id                       String @id @default(uuid()) @db.Uuid
+  tenantId                 String @db.Uuid
+  ratePlanId               String @db.Uuid
+  roomTypeId               String @db.Uuid
+  weekdayRateMinor         Int
+  weekendRateMinor         Int?
+  singleOccupancyRateMinor Int?
+  extraAdultRateMinor      Int?
+  extraChildRateMinor      Int?
 
   ratePlan RatePlan @relation(fields: [ratePlanId], references: [id], onDelete: Cascade)
   roomType RoomType @relation(fields: [roomTypeId], references: [id])
@@ -1028,4 +1029,188 @@ model NotificationRead {
   @@id([notificationId, userId])
   @@index([tenantId, userId])
   @@map("notification_reads")
+}
+
+// ---------- Subscriptions (the software provider's own billing; never mixed with hotel guest billing) ----------
+
+/// A sellable plan. Limits are null for "unlimited". Prices are paise per month; the annual price is derived from
+/// annualDiscountBps unless annualPriceMinor is set. Edited by the platform administrator, never hardcoded.
+model Plan {
+  id                String   @id @default(uuid()) @db.Uuid
+  code              String   @unique
+  name              String
+  description       String   @default("")
+  active            Boolean  @default(true)
+  isPublic          Boolean  @default(true)
+  sortOrder         Int      @default(0)
+  monthlyPriceMinor Int      @default(0)
+  annualPriceMinor  Int?
+  annualDiscountBps Int      @default(1667)
+  currency          String   @default("INR")
+  trialDays         Int      @default(14)
+  customPricing     Boolean  @default(false)
+  maxProperties     Int?
+  maxRooms          Int?
+  maxUsers          Int?
+  maxStorageMb      Int?
+  maxIntegrations   Int?
+  features          Json     @default("{}")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  subscriptions Subscription[]
+
+  @@map("plans")
+}
+
+model PlanAddon {
+  id                String   @id @default(uuid()) @db.Uuid
+  code              String   @unique
+  name              String
+  description       String   @default("")
+  monthlyPriceMinor Int      @default(0)
+  active            Boolean  @default(true)
+  createdAt         DateTime @default(now())
+
+  @@map("plan_addons")
+}
+
+model Coupon {
+  id             String    @id @default(uuid()) @db.Uuid
+  code           String    @unique
+  description    String    @default("")
+  kind           String // PERCENT | AMOUNT
+  value          Int // basis points for PERCENT, paise for AMOUNT
+  months         Int       @default(1) // how many billing periods the discount applies to
+  startsAt       DateTime?
+  endsAt         DateTime?
+  maxRedemptions Int?
+  redeemed       Int       @default(0)
+  planCodes      String[]  @default([]) // empty = every plan
+  active         Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+
+  subscriptions Subscription[]
+
+  @@map("coupons")
+}
+
+model Subscription {
+  id                 String    @id @default(uuid()) @db.Uuid
+  tenantId           String    @unique @db.Uuid
+  planId             String    @db.Uuid
+  interval           String    @default("MONTHLY") // MONTHLY | ANNUAL
+  status             String    @default("TRIAL") // TRIAL | ACTIVE | PAYMENT_DUE | PAST_DUE | SUSPENDED | CANCELLED | EXPIRED
+  trialEndsAt        DateTime?
+  periodStart        DateTime?
+  periodEnd          DateTime?
+  cancelAtPeriodEnd  Boolean   @default(false)
+  graceEndsAt        DateTime?
+  couponId           String?   @db.Uuid
+  couponMonthsLeft   Int       @default(0)
+  priceOverrideMinor Int?
+  pendingPlanId      String?   @db.Uuid
+  pendingInterval    String?
+  note               String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id])
+  plan   Plan    @relation(fields: [planId], references: [id])
+  coupon Coupon? @relation(fields: [couponId], references: [id])
+
+  @@index([status, periodEnd])
+  @@map("subscriptions")
+}
+
+model SubscriptionInvoice {
+  id             String    @id @default(uuid()) @db.Uuid
+  tenantId       String    @db.Uuid
+  subscriptionId String    @db.Uuid
+  number         String    @unique
+  kind           String // NEW | RENEWAL | UPGRADE
+  status         String    @default("OPEN") // OPEN | PAID | VOID
+  lines          Json
+  netMinor       Int
+  taxBps         Int       @default(0)
+  taxMinor       Int       @default(0)
+  grossMinor     Int
+  issuedAt       DateTime  @default(now())
+  dueDate        DateTime
+  periodStart    DateTime?
+  periodEnd      DateTime?
+  paidAt         DateTime?
+  attempts       Int       @default(0)
+  nextRetryAt    DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([tenantId, status])
+  @@index([subscriptionId])
+  @@map("subscription_invoices")
+}
+
+model SubscriptionPayment {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @db.Uuid
+  invoiceId      String   @db.Uuid
+  amountMinor    Int
+  method         String // BANK_TRANSFER | UPI | CASH | CHEQUE | OTHER
+  reference      String   @default("")
+  status         String   @default("SUCCEEDED") // SUCCEEDED | FAILED
+  idempotencyKey String   @unique
+  recordedBy     String?  @db.Uuid
+  note           String?
+  createdAt      DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([invoiceId])
+  @@map("subscription_payments")
+}
+
+model SubscriptionEvent {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @db.Uuid
+  subscriptionId String   @db.Uuid
+  type           String
+  detail         Json     @default("{}")
+  actorId        String?  @db.Uuid
+  createdAt      DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@map("subscription_events")
+}
+
+model PlatformSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  @@map("platform_settings")
+}
+
+/// Numbered series for the provider's own invoices, one counter per financial year.
+model PlatformCounter {
+  key   String @id
+  value Int    @default(0)
+
+  @@map("platform_counters")
+}
+
+model Lead {
+  id           String   @id @default(uuid()) @db.Uuid
+  kind         String   @default("CONTACT") // CONTACT | DEMO
+  name         String
+  hotel        String
+  mobile       String
+  email        String
+  rooms        Int?
+  properties   Int?
+  integrations String?
+  message      String?
+  status       String   @default("NEW") // NEW | CONTACTED | CLOSED
+  ipHash       String?
+  createdAt    DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("leads")
 }

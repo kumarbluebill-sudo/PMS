@@ -8,6 +8,7 @@ import {
   effectiveNightRates, findPlanConflicts, MEAL_PLANS, type NightRate, type PlanInput,
 } from "@/server/domain/rates";
 import { audit } from "./audit";
+import { assertFeature, assertWithinPlan } from "./subscription";
 
 type Tx = Prisma.TransactionClient;
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -198,6 +199,7 @@ export async function reactivateRoom(db: PrismaClient, ctx: Ctx, id: string) {
     if (!room) throw new AppError("NOT_FOUND", "Room not found.");
     if (room.active) throw new AppError("CONFLICT", `Room ${room.number} is already active.`);
     if (!room.roomType.active) throw new AppError("CONFLICT", `Its category "${room.roomType.name}" is inactive. Reactivate the category or move the room to another category first.`);
+    await assertWithinPlan(tx, ctx.tenantId, "rooms");
     await tx.room.update({ where: { id }, data: { active: true, archivedAt: null, ...(room.floorRef && !room.floorRef.active ? { floorId: null, buildingId: null, floor: null } : {}) } });
     await audit(tx, ctx, { action: "room.reactivate", entityType: "Room", entityId: id, before: { active: false }, after: { active: true } });
   });
@@ -254,6 +256,7 @@ export async function createRoomsBulk(db: PrismaClient, ctx: Ctx, input: unknown
   const p = await previewBulkRooms(db, ctx, d);
   if (p.taken.length) throw new AppError("CONFLICT", `These room numbers already exist: ${p.taken.slice(0, 8).join(", ")}${p.taken.length > 8 ? "..." : ""}. Nothing was created.`);
   return withTenant(db, ctx.tenantId, async (tx) => {
+    await assertWithinPlan(tx, ctx.tenantId, "rooms", p.numbers.length);
     await tx.room.createMany({
       data: p.numbers.map((number) => ({
         tenantId: ctx.tenantId, propertyId, roomTypeId: d.roomTypeId, number,
@@ -608,6 +611,7 @@ export async function createRatePlan(db: PrismaClient, ctx: Ctx, input: unknown)
   const propertyId = requireProperty(ctx);
   const d = planSchema.parse(input);
   return withTenant(db, ctx.tenantId, async (tx) => {
+    await assertFeature(tx, ctx.tenantId, "rate_plans", "Rate plans");
     const p = await writePlan(tx, ctx, propertyId, d);
     await audit(tx, ctx, { action: "ratePlan.create", entityType: "RatePlan", entityId: p.id, after: { name: p.name, code: p.code, priority: p.priority, from: d.validFrom || null, to: d.validTo || null, lines: d.rates.length } });
     return p;

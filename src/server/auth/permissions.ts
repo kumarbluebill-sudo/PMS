@@ -69,8 +69,11 @@ export type RoleKey = (typeof ROLES)[number];
 
 /** Roles that must enrol in TOTP MFA before using the app. */
 export const MFA_REQUIRED_ROLES: readonly RoleKey[] = [
-  "HOTEL_OWNER", "GROUP_ADMIN", "GENERAL_MANAGER", "PROPERTY_MANAGER", "ACCOUNTS_MANAGER",
+  "HOTEL_OWNER", "GROUP_ADMIN", "GENERAL_MANAGER", "PROPERTY_MANAGER", "ACCOUNTS_MANAGER", "PLATFORM_SUPER_ADMIN", "SAAS_SUPPORT_ADMIN",
 ];
+
+/** Permissions that only read or export. They keep working when a subscription has lapsed and the account is read-only. */
+export const READ_ONLY_SAFE = /.(view|viewSensitive)$|^reports.export$|^subscription.manage$/;
 
 const ALL: Permission[] = [...PERMISSIONS];
 

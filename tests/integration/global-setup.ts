@@ -19,5 +19,8 @@ export default async function setup() {
     END IF; END $$;`);
   await c.query(`GRANT USAGE ON SCHEMA public TO pms_app;
     GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO pms_app;`);
+  // Most tests are not about plans, so new test hotels start on the unlimited plan; subscription tests choose their own.
+  await c.query(`INSERT INTO platform_settings ("key", "value", "updatedAt") VALUES ('saas.defaultPlanCode', '"enterprise"', now())
+    ON CONFLICT ("key") DO UPDATE SET "value" = '"enterprise"'`);
   await c.end();
 }

@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { AppError } from "@/server/errors";
 import { withTenant } from "@/server/db/withTenant";
+import { startTrial } from "./subscription";
 
 export const registerSchema = z.object({
   businessName: z.string().trim().min(2).max(120),
@@ -10,6 +11,8 @@ export const registerSchema = z.object({
   name: z.string().trim().min(2).max(100),
   email: z.string().trim().toLowerCase().email(),
   password: z.string().min(10, "Use at least 10 characters").max(200),
+  /** Plan chosen on the pricing page; the platform default is used when absent or unknown. */
+  plan: z.string().trim().max(40).optional(),
 });
 
 /** Creates tenant + owner user + first property atomically. */
@@ -28,9 +31,10 @@ export async function registerTenant(db: PrismaClient, input: unknown) {
     });
     return { tenant, user };
   });
-  const property = await withTenant(db, tenant.id, (tx) =>
-    tx.property.create({ data: { tenantId: tenant.id, name: d.propertyName } }),
-  );
+  const property = await withTenant(db, tenant.id, async (tx) => {
+    await startTrial(tx, tenant.id, d.plan);
+    return tx.property.create({ data: { tenantId: tenant.id, name: d.propertyName } });
+  });
   return { tenantId: tenant.id, userId: user.id, propertyId: property.id };
 }
 

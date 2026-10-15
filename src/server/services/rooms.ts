@@ -4,6 +4,7 @@ import { ALL_PROPERTY_ROLES, authorize, requireProperty, type Ctx } from "@/serv
 import { withTenant } from "@/server/db/withTenant";
 import { AppError } from "@/server/errors";
 import { audit } from "./audit";
+import { assertWithinPlan } from "./subscription";
 
 const roomTypeSchema = z.object({
   name: z.string().trim().min(1).max(80),
@@ -46,6 +47,7 @@ export async function createRoom(db: PrismaClient, ctx: Ctx, input: unknown) {
     if (!rt.active) throw new AppError("VALIDATION", `Category "${rt.name}" is inactive.`);
     const dup = await tx.room.findFirst({ where: { propertyId, number: d.number } });
     if (dup) throw new AppError("CONFLICT", `Room ${d.number} already exists.`);
+    await assertWithinPlan(tx, ctx.tenantId, "rooms");
     const placement: { floor?: number; floorId?: string; buildingId?: string } = {};
     if (d.floorId) {
       const f = await tx.floor.findFirst({ where: { id: d.floorId, propertyId } });
@@ -109,6 +111,7 @@ export async function createProperty(db: PrismaClient, ctx: Ctx, input: unknown)
   if (!ALL_PROPERTY_ROLES.includes(ctx.role)) throw new AppError("FORBIDDEN", "Only an owner, group admin or general manager can add a property.");
   const d = z.object({ name: z.string().trim().min(2, "Enter the property's name.").max(120) }).parse(input);
   return withTenant(db, ctx.tenantId, async (tx) => {
+    await assertWithinPlan(tx, ctx.tenantId, "properties");
     const p = await tx.property.create({ data: { tenantId: ctx.tenantId, name: d.name } });
     await audit(tx, { ...ctx, propertyId: p.id }, { action: "property.create", entityType: "Property", entityId: p.id, after: { name: d.name } });
     return p;
