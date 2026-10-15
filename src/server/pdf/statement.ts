@@ -16,6 +16,9 @@ export type PdfStatement = {
   rows: StatementRow[];
   summary: { billedMinor: number; paidMinor: number; refundedMinor: number; balanceMinor: number };
   style?: InvoiceStyle;
+  /** "Guest folio statement" by default; "Interim bill" for a bill to date. */
+  title?: string;
+  notice?: string;
 };
 
 /**
@@ -65,8 +68,8 @@ export async function renderStatementPdf(s: PdfStatement): Promise<Uint8Array> {
   };
 
   if (S.topBar) page.drawRectangle({ x: 0, y: H - 10, width: W, height: 10, color: ruleCol });
-  put("Guest folio statement", M, y - 14, bold, 16, accent);
-  put("Statement of account. This is not a tax invoice.", M, y - 28, font, 8);
+  put(s.title ?? "Guest folio statement", M, y - 14, bold, 16, accent);
+  put(s.notice ?? "Statement of account. This is not a tax invoice.", M, y - 28, font, 8);
   put(`As of ${s.asOf}`, M, y - 40);
   let ry = y - 14;
   const sup = [s.hotel.name, ...(s.hotel.address ? wrap(s.hotel.address, font, size, 230) : []), ...(s.hotel.gstin ? [`GSTIN: ${s.hotel.gstin}`] : [])];

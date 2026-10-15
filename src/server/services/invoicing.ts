@@ -338,6 +338,27 @@ export async function getInvoice(db: PrismaClient, ctx: Ctx, id: string) {
     const inv = await tx.invoice.findFirst({ where: { id, propertyId }, include: { lines: true } });
     if (!inv) throw new AppError("NOT_FOUND", "Invoice not found.");
     const original = inv.originalInvoiceId ? await tx.invoice.findUnique({ where: { id: inv.originalInvoiceId }, select: { number: true } }) : null;
-    return { ...inv, originalNumber: original?.number ?? null, issuedDate: iso(inv.issuedAt) };
+    const folio = await tx.folio.findUnique({ where: { id: inv.folioId }, include: { reservation: { include: { assignments: { orderBy: { createdAt: "desc" }, take: 1, include: { room: { select: { number: true } } } } } } } });
+    const r = folio?.reservation;
+    const type = r ? await tx.roomType.findUnique({ where: { id: r.roomTypeId }, select: { name: true } }) : null;
+    const stay = r ? {
+      reference: r.reference, source: r.source, room: r.assignments[0]?.room.number ?? null, category: type?.name ?? null,
+      arrival: iso(r.arrival), departure: iso(r.departure), nights: Math.max(1, Math.round((r.departure.getTime() - r.arrival.getTime()) / 86_400_000)),
+    } : null;
+    return { ...inv, originalNumber: original?.number ?? null, issuedDate: iso(inv.issuedAt), stay };
+  });
+}
+
+/**
+ * Notes that a copy of an issued invoice was printed or downloaded and says which copy this is: the first is the
+ * original for the recipient, every later one a duplicate. The count is kept in the audit log because issued
+ * invoices cannot be changed.
+ */
+export async function recordInvoicePrint(db: PrismaClient, ctx: Ctx, invoiceId: string) {
+  authorize(ctx, "billing.view");
+  return withTenant(db, ctx.tenantId, async (tx) => {
+    const before = await tx.auditLog.count({ where: { tenantId: ctx.tenantId, action: "invoice.print", entityType: "Invoice", entityId: invoiceId } });
+    await audit(tx, ctx, { action: "invoice.print", entityType: "Invoice", entityId: invoiceId, after: { copy: before + 1 } });
+    return { copy: before + 1, label: before === 0 ? "ORIGINAL FOR RECIPIENT" : `DUPLICATE COPY (${before + 1})` };
   });
 }

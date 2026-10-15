@@ -11,7 +11,7 @@ import { createBooking } from "@/server/services/booking";
 import { checkIn } from "@/server/services/reservations";
 import { folioDetail, openFolio, postCharge, postRoomNights } from "@/server/services/billing";
 import { approveRule, createRule, updateGstSettings } from "@/server/services/tax";
-import { getInvoice, issueCreditNote, issueDebitNote, issueInvoice } from "@/server/services/invoicing";
+import { getInvoice, recordInvoicePrint, issueCreditNote, issueDebitNote, issueInvoice } from "@/server/services/invoicing";
 import { recordPayment, refundPayment, getPaymentReceipt } from "@/server/services/payments";
 import { createCompanyFolio, transferEntries } from "@/server/services/folios";
 import { checkoutOverview, settleAndCheckOut } from "@/server/services/checkout";
@@ -314,5 +314,21 @@ describe("receipts and PDFs", () => {
       lines: inv.lines, totals: { netMinor: inv.netMinor, cgstMinor: inv.cgstMinor, sgstMinor: inv.sgstMinor, igstMinor: inv.igstMinor, cessMinor: inv.cessMinor, grossMinor: inv.grossMinor },
     });
     expect(Buffer.from(bytes.subarray(0, 5)).toString()).toBe("%PDF-");
+  });
+});
+
+describe("invoice copies and stay details", () => {
+  it("labels the first print as the original and later ones as numbered duplicates, and carries the stay", async () => {
+    const { res } = await stay();
+    const paid = await settleAndCheckOut(app, owner, res.id, { payment: { method: "UPI", amountMinor: 1_008_000, idempotencyKey: key() } });
+    const first = await recordInvoicePrint(app, owner, paid.invoiceId!);
+    const second = await recordInvoicePrint(app, owner, paid.invoiceId!);
+    expect(first).toEqual({ copy: 1, label: "ORIGINAL FOR RECIPIENT" });
+    expect(second).toEqual({ copy: 2, label: "DUPLICATE COPY (2)" });
+    expect(await admin.auditLog.count({ where: { entityId: paid.invoiceId!, action: "invoice.print" } })).toBe(2);
+    const inv = await getInvoice(app, owner, paid.invoiceId!);
+    expect(inv.stay).toMatchObject({ reference: res.reference, nights: 2 });
+    expect(inv.stay?.room).toBeTruthy();
+    await expect(recordInvoicePrint(app, asRole(owner, "HOUSEKEEPING"), paid.invoiceId!)).rejects.toThrow(/permission/i);
   });
 });

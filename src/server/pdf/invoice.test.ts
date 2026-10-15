@@ -82,3 +82,26 @@ describe("invoice themes", () => {
     }
   });
 });
+
+describe("invoice extras", () => {
+  const stay = { reference: "MK-1A2B3C4D", source: "Walk-in", room: "101", category: "Deluxe", arrival: "2026-11-02", departure: "2026-11-04", nights: 2 };
+  it("renders a pro forma with its notice, and every theme with a copy label, stay details and the SAC summary", async () => {
+    const { INVOICE_THEMES, resolveInvoiceStyle } = await import("@/server/domain/invoiceTheme");
+    const pro = await renderInvoicePdf({ ...base("PRO_FORMA", 2), number: "PRO-FORMA/MK-1A2B3C4D/20261102", notice: "Not a tax invoice.", stay });
+    expect((await PDFDocument.load(pro)).getTitle()).toBe("Pro Forma Invoice PRO-FORMA/MK-1A2B3C4D/20261102");
+    for (const theme of INVOICE_THEMES) {
+      const bytes = await renderInvoicePdf({ ...base("TAX_INVOICE", 3), copyLabel: "DUPLICATE COPY (2)", stay, style: resolveInvoiceStyle({ theme }) });
+      const doc = await PDFDocument.load(bytes);
+      expect(doc.getPageCount()).toBe(1);
+      const raw = inflateStreams(bytes);
+      expect(raw.includes("DUPLICATE COPY (2)") || raw.toUpperCase().includes(Buffer.from("DUPLICATE COPY (2)").toString("hex").toUpperCase())).toBe(true);
+      expect(raw.includes("SAC 996311") || raw.toUpperCase().includes(Buffer.from("SAC 996311").toString("hex").toUpperCase())).toBe(true);
+    }
+  });
+  it("leaves out a logo it cannot read, and does not summarise tax on a bill of supply", async () => {
+    const withBadLogo = await renderInvoicePdf({ ...base("TAX_INVOICE", 1), logo: { bytes: new Uint8Array([9, 9, 9]), type: "png" } });
+    expect(Buffer.from(withBadLogo.subarray(0, 5)).toString()).toBe("%PDF-");
+    const bos = inflateStreams(await renderInvoicePdf(base("BILL_OF_SUPPLY", 1)));
+    expect(bos.includes("Tax summary by SAC")).toBe(false);
+  });
+});

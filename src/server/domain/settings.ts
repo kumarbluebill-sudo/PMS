@@ -10,7 +10,7 @@ export const PALETTE_KEYS = ["green", "blue", "orange", "slate", "red", "purple"
 export type PaletteKey = (typeof PALETTE_KEYS)[number];
 
 export type Control = "text" | "textarea" | "number" | "checkbox" | "select" | "multi" | "secret";
-export type Group = "general" | "reservations" | "rooms" | "billing" | "security" | "notifications" | "reports" | "backup";
+export type Group = "general" | "reservations" | "rooms" | "billing" | "security" | "notifications" | "reports" | "backup" | "tax";
 
 export type SettingDef<S extends z.ZodType = z.ZodType> = {
   scope: "PROPERTY" | "TENANT";
@@ -68,6 +68,9 @@ export const DEFS = {
     schema: z.partialRecord(z.enum(DISPLAY_STATUSES), z.object({ label: z.string().trim().min(1).max(30).optional(), color: z.enum(PALETTE_KEYS).optional() })),
     default: {} as Partial<Record<(typeof DISPLAY_STATUSES)[number], { label?: string; color?: PaletteKey }>>,
   }),
+  // Kept by the GST setup wizard, not edited as plain settings (group "tax" has no settings form).
+  "tax.setupConfirmedAt": def({ scope: "PROPERTY", perm: "tax.manage", group: "tax", label: "GST setup confirmed on", control: "text", schema: text(40), default: "" }),
+  "tax.setupConfirmedBy": def({ scope: "PROPERTY", perm: "tax.manage", group: "tax", label: "GST setup confirmed by", control: "text", schema: text(120), default: "" }),
   "housekeeping.inspectionRequired": def({ scope: "PROPERTY", perm: "settings.manage", group: "rooms", label: "A cleaned room must be inspected before it counts as ready", control: "checkbox", help: "When on, finishing a clean leaves the room Vacant – Clean and awaiting inspection. It is offered for arrivals only after a supervisor inspects it.", schema: z.boolean(), default: false }),
   "housekeeping.autoStayover": def({ scope: "PROPERTY", perm: "settings.manage", group: "rooms", label: "Create stayover tasks automatically every morning", control: "checkbox", help: "A daily job opens a stayover (pickup) task for every in-house room that is not Do Not Disturb. It runs once a day at a fixed time; you can still generate them by hand.", schema: z.boolean(), default: false }),
   "housekeeping.overdueMinutes": def({ scope: "PROPERTY", perm: "settings.manage", group: "rooms", label: "A cleaning task is overdue after (minutes)", control: "number", min: 15, max: 1440, schema: z.number().int().min(15).max(1440), default: 120 }),

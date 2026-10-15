@@ -23,11 +23,18 @@ export type PdfInvoice = {
   signatureLabel?: string | null;
   /** Colours, type and spacing only. Defaults to the classic theme. */
   style?: InvoiceStyle;
+  /** Printed at the top right, e.g. ORIGINAL FOR RECIPIENT or DUPLICATE COPY (2). */
+  copyLabel?: string | null;
+  /** A line under the title, e.g. "Not a tax invoice" on a pro forma. */
+  notice?: string | null;
+  logo?: { bytes: Uint8Array; type: "png" | "jpg" } | null;
+  /** The stay this document is for. */
+  stay?: { reference: string; source?: string | null; room?: string | null; category?: string | null; arrival: string; departure: string; nights: number } | null;
   lines: PdfLine[];
   totals: { netMinor: number; cgstMinor: number; sgstMinor: number; igstMinor: number; cessMinor: number; grossMinor: number };
 };
 
-const TITLES: Record<string, string> = { TAX_INVOICE: "Tax Invoice", BILL_OF_SUPPLY: "Bill of Supply", CREDIT_NOTE: "Credit Note", DEBIT_NOTE: "Debit Note" };
+const TITLES: Record<string, string> = { TAX_INVOICE: "Tax Invoice", BILL_OF_SUPPLY: "Bill of Supply", CREDIT_NOTE: "Credit Note", DEBIT_NOTE: "Debit Note", PRO_FORMA: "Pro Forma Invoice" };
 
 /** The standard PDF fonts only cover Latin-1, so the rupee sign is written as "Rs." and anything else outside is replaced. */
 export const pdfSafe = (s: string) => s.replaceAll("₹", "Rs.").replace(/[^\x20-\x7E\xA0-\xFF]/g, "?");
@@ -97,10 +104,20 @@ export async function renderInvoicePdf(inv: PdfInvoice): Promise<Uint8Array> {
   const rule = (yy: number) => page.drawLine({ start: { x: M, y: yy }, end: { x: W - M, y: yy }, thickness: S.topBar ? 0.8 : 0.5, color: ruleCol });
 
   newPage();
+  if (inv.copyLabel) right(inv.copyLabel, W - M, H - 26, bold, 8);
+  if (inv.logo) {
+    try {
+      const img = inv.logo.type === "png" ? await doc.embedPng(inv.logo.bytes) : await doc.embedJpg(inv.logo.bytes);
+      const scale = Math.min(44 / img.height, 150 / img.width, 1);
+      page.drawImage(img, { x: M, y: y - img.height * scale + 6, width: img.width * scale, height: img.height * scale });
+      y -= img.height * scale + 8;
+    } catch { /* an unreadable logo is left out */ }
+  }
   text(TITLES[inv.kind] ?? inv.kind, M, y - 14, bold, 16, accent);
   text(inv.number, M, y - 30, bold, 11, accent);
   text(`Date: ${inv.issuedDate}`, M, y - 44);
   let ly = y - 58;
+  if (inv.notice) { text(inv.notice, M, ly, bold, 8.5, rgb(0.6, 0.15, 0.1)); ly -= 12; }
   if (inv.originalNumber) { text(`Against invoice: ${inv.originalNumber}`, M, ly); ly -= 12; }
   if (inv.reason) for (const l of wrap(`Reason: ${inv.reason}`, font, size, 250)) { text(l, M, ly); ly -= 12; }
   // Supplier on the right.
@@ -119,6 +136,10 @@ export async function renderInvoicePdf(inv: PdfInvoice): Promise<Uint8Array> {
   for (const l of inv.recipient.address ? wrap(inv.recipient.address, font, size, 300) : []) { text(l, M, y); y -= 12; }
   if (inv.recipient.gstin) { text(`GSTIN: ${inv.recipient.gstin}`, M, y); y -= 12; }
   if (inv.placeOfSupply) { text(`Place of supply: ${inv.placeOfSupplyName ?? ""} (${inv.placeOfSupply})`, M, y); y -= 12; }
+  if (inv.stay) {
+    const st = inv.stay;
+    for (const l of wrap(`Reservation ${st.reference}${st.source ? ` · ${st.source}` : ""}${st.room ? ` · Room ${st.room}` : ""}${st.category ? ` (${st.category})` : ""} · Stay ${st.arrival} to ${st.departure} (${st.nights} night${st.nights === 1 ? "" : "s"})`, font, size, W - 2 * M)) { text(l, M, y); y -= 12; }
+  }
   y -= 8;
 
   const header = () => {
@@ -170,6 +191,20 @@ export async function renderInvoicePdf(inv: PdfInvoice): Promise<Uint8Array> {
   text(inv.kind === "CREDIT_NOTE" ? "Total credited" : "Total", W - M - 200, y, bold, 11);
   right(pdfMoney(t.grossMinor), W - M, y, bold, 11);
   y -= 24;
+  if (showTax && inv.lines.length > 0) {
+    // Tax by SAC code, the summary an accountant looks for.
+    const by = new Map<string, { net: number; cgst: number; sgst: number; igst: number }>();
+    for (const l of inv.lines) {
+      const k = l.sacCode ?? "-";
+      const c = by.get(k) ?? { net: 0, cgst: 0, sgst: 0, igst: 0 };
+      c.net += l.netMinor; c.cgst += l.cgstMinor; c.sgst += l.sgstMinor; c.igst += l.igstMinor;
+      by.set(k, c);
+    }
+    if (y < M + 40 + by.size * 12) newPage();
+    text("Tax summary by SAC", M, y, bold, 8); y -= 11;
+    for (const [k, c] of by) { text(`SAC ${k}`, M, y, font, 8); right(`Taxable ${pdfMoney(c.net)}  CGST ${pdfMoney(c.cgst)}  SGST ${pdfMoney(c.sgst)}  IGST ${pdfMoney(c.igst)}`, W - M, y, font, 8); y -= 11; }
+    y -= 8;
+  }
   if (inv.kind === "BILL_OF_SUPPLY") text("No GST has been charged on this document.", M, y);
   else if (!inv.supplier.registered) text("Supplier is not registered under GST.", M, y);
 

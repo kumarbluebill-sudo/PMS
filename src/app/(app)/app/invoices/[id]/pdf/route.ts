@@ -3,8 +3,10 @@ import { getDb } from "@/server/db/client";
 import { GST_STATES } from "@/server/domain/gst";
 import { resolveInvoiceStyle } from "@/server/domain/invoiceTheme";
 import { renderInvoicePdf } from "@/server/pdf/invoice";
+import { withTenant } from "@/server/db/withTenant";
 import { getCtx } from "@/server/session";
-import { getInvoice } from "@/server/services/invoicing";
+import { getInvoice, recordInvoicePrint } from "@/server/services/invoicing";
+import { fetchLogo } from "@/server/services/confirmationDoc";
 import { settingsFor } from "@/server/services/settings";
 
 type Party = { name?: string; gstin?: string | null; stateCode?: string | null; address?: string | null; registered?: boolean };
@@ -15,7 +17,9 @@ export async function GET(_req: NextRequest, { params }: RouteContext<"/app/invo
   const ctx = await getCtx();
   const inv = await getInvoice(getDb(), ctx, id);
   const st = await settingsFor(getDb(), ctx);
+  const [copy, property] = await Promise.all([recordInvoicePrint(getDb(), ctx, id), withTenant(getDb(), ctx.tenantId, (tx) => tx.property.findFirstOrThrow({ where: { id: inv.propertyId }, select: { logoUrl: true } }))]);
   const bytes = await renderInvoicePdf({
+    copyLabel: inv.kind === "CREDIT_NOTE" || inv.kind === "DEBIT_NOTE" ? copy.label.replace("FOR RECIPIENT", "").trim() : copy.label, stay: inv.stay, logo: await fetchLogo(property.logoUrl || st["general.logoUrl"]),
     number: inv.number, kind: inv.kind, issuedDate: inv.issuedDate, originalNumber: inv.originalNumber, reason: inv.reason,
     supplier: inv.supplier as Party, recipient: inv.recipient as Party,
     placeOfSupply: inv.placeOfSupply, placeOfSupplyName: inv.placeOfSupply ? (GST_STATES[inv.placeOfSupply] ?? null) : null,

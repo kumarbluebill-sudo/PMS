@@ -1,15 +1,18 @@
 import Link from "next/link";
-import { Card, fmtDate, PageHeader } from "@/app/ui";
+import { Card, fmtDate, Notice, PageHeader } from "@/app/ui";
 import { getDb } from "@/server/db/client";
 import { formatInr } from "@/server/money";
 import { getCtx } from "@/server/session";
 import { listInvoices } from "@/server/services/invoicing";
+import { gstWarning } from "@/server/services/tax";
 
 export default async function Invoices() {
-  const rows = await listInvoices(getDb(), await getCtx(), ["TAX_INVOICE", "BILL_OF_SUPPLY"]);
+  const ctx = await getCtx();
+  const [rows, warning] = await Promise.all([listInvoices(getDb(), ctx, ["TAX_INVOICE", "BILL_OF_SUPPLY"]), gstWarning(getDb(), ctx)]);
   return (
     <>
       <PageHeader title="Invoices" subtitle="Issued invoices are immutable. Corrections are made with credit notes." />
+      {warning && <Notice tone="warn">{warning} <Link className="underline" href="/app/settings/tax/setup">Open the GST setup</Link></Notice>}
       <Card>
         {rows.length === 0 ? <p className="text-sm text-slate-500">No invoices issued yet.</p> : (
           <div className="overflow-x-auto">

@@ -103,7 +103,11 @@ export default async function FolioPage({ params, searchParams }: PageProps<"/ap
         )}
       </div>
 
-      <p className="mb-2 text-sm"><a className={btnGhost} href={`/app/guest-folios/${f.id}/statement`}>Download folio statement (PDF)</a></p>
+      <p className="mb-2 flex flex-wrap gap-2 text-sm">
+        <a className={btnGhost} href={`/app/guest-folios/${f.id}/statement`}>Folio statement (PDF)</a>
+        <a className={btnGhost} href={`/app/guest-folios/${f.id}/statement?type=interim`}>Interim bill (PDF)</a>
+        {can("invoices.issue") && <a className={btnGhost} href={`/app/guest-folios/${f.id}/proforma`}>Pro forma invoice (PDF)</a>}
+      </p>
       <Card title="Itemised ledger">
         <div className="relative overflow-x-auto" tabIndex={0} role="region" aria-label="Folio ledger, scrolls sideways">
           <table className="w-full min-w-[56rem] text-left text-sm">

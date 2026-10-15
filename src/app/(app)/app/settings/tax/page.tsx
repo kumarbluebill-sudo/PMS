@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { approveRuleAction, createRuleAction, deleteRuleAction, gstSettingsAction, retireRuleAction } from "@/app/billing-actions";
 import { Badge, btn, btnGhost, Card, ErrorBanner, Field, input, PageHeader } from "@/app/ui";
 import { roleHasPermission } from "@/server/auth/permissions";
@@ -23,7 +24,7 @@ export default async function TaxSettings({ searchParams }: PageProps<"/app/sett
   const badge = (s: string) => <Badge value={s === "APPROVED" ? "CHECKED_IN" : s === "RETIRED" ? "CANCELLED" : "NO_SHOW"} />;
   return (
     <>
-      <PageHeader title="GST & tax settings" subtitle="No GST rates are built in. Every rate is a rule your authorised staff enter and a different authorised user approves." />
+      <PageHeader title="GST & tax settings" subtitle="Every rate is a rule your authorised staff enter and a different authorised user approves. Presets are available as starting points." actions={<Link href="/app/settings/tax/setup" className={btn}>Open the setup wizard</Link>} />
       <div role="note" className="mb-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
         This software is not GST-certified. Have a qualified GST professional verify your registration details, SAC codes, rates, tariff bands and effective dates before issuing real invoices.
       </div>

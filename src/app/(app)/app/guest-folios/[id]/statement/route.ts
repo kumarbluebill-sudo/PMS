@@ -8,14 +8,16 @@ import { folioDetail } from "@/server/services/billing";
 import { settingsFor } from "@/server/services/settings";
 
 /** Folio statement PDF: the account of a stay, including payments. Needs billing access (checked in folioDetail). */
-export async function GET(_req: NextRequest, { params }: RouteContext<"/app/guest-folios/[id]/statement">) {
+export async function GET(req: NextRequest, { params }: RouteContext<"/app/guest-folios/[id]/statement">) {
   const { id } = await params;
   const ctx = await getCtx();
   const d = await folioDetail(getDb(), ctx, id);
   const st = await settingsFor(getDb(), ctx);
   const f = d.folio;
   const res = f.reservation;
+  const interim = req.nextUrl.searchParams.get("type") === "interim";
   const bytes = await renderStatementPdf({
+    ...(interim ? { title: "Interim bill", notice: "Charges and payments to date. The stay is not finished and this is not a tax invoice." } : {}),
     hotel: { name: d.property?.legalName ?? d.property?.name ?? "Hotel", address: d.property?.address, gstin: d.property?.gstin },
     headerLine: st["billing.docHeader"],
     guest: res.guest.name, reservation: res.reference, stay: `${fmtDate(res.arrival)} to ${fmtDate(res.departure)}`,
@@ -32,7 +34,7 @@ export async function GET(_req: NextRequest, { params }: RouteContext<"/app/gues
   return new NextResponse(Buffer.from(bytes), {
     headers: {
       "content-type": "application/pdf",
-      "content-disposition": `attachment; filename="folio-${res.reference.replace(/[^\w.-]/g, "-")}.pdf"`,
+      "content-disposition": `attachment; filename="${interim ? "interim-bill" : "folio"}-${res.reference.replace(/[^\w.-]/g, "-")}.pdf"`,
       "cache-control": "private, no-store",
     },
   });
