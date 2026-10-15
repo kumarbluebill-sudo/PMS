@@ -77,7 +77,10 @@ function nightsOrThrow(arrival: string, departure: string) {
 const shareOf = (total: number, rooms: number, i: number) => Math.floor(total / rooms) + (i < total % rooms ? 1 : 0);
 
 /** Availability, nightly rates, discount and GST for a stay. Runs inside the caller's transaction; the browser's numbers are never used. */
-export async function computeQuote(tx: Tx, ctx: Ctx, propertyId: string, input: z.output<typeof quoteSchema>): Promise<Quote> {
+/** Rates frozen on an existing booking, used when it is changed under a 'keep the booked rate' policy. */
+export type FrozenRates = { nightly: Record<string, number>; fallback: number; extraAdultMinor: number; extraChildMinor: number; baseOccupancy: number };
+
+export async function computeQuote(tx: Tx, ctx: Ctx, propertyId: string, input: z.output<typeof quoteSchema>, frozen?: FrozenRates): Promise<Quote> {
   const nights = nightsOrThrow(input.arrival, input.departure);
   if (nights > 365) throw new AppError("VALIDATION", "A stay cannot be longer than 365 nights.");
   const st = await loadSettings(tx, ctx.tenantId, propertyId);
@@ -90,18 +93,22 @@ export async function computeQuote(tx: Tx, ctx: Ctx, propertyId: string, input: 
     loadPlans(tx, propertyId),
   ]);
   if (!rt) throw new AppError("NOT_FOUND", "Room type not found.");
-  if (!rt.active) throw new AppError("VALIDATION", `"${rt.name}" is not open for new bookings.`);
+  if (!rt.active && !frozen) throw new AppError("VALIDATION", `"${rt.name}" is not open for new bookings.`);
   if (input.ratePlanId) {
     const chosen = plans.find((p) => p.id === input.ratePlanId);
     if (!chosen || !chosen.active || !chosen.rates.some((r) => r.roomTypeId === rt.id)) throw new AppError("VALIDATION", "That rate plan is not available for this category.");
   }
 
   const dates = stayNights(input.arrival, input.departure);
-  const base = effectiveNightRates({
+  let base = effectiveNightRates({
     roomTypeId: rt.id, baseRateMinor: rt.baseRateMinor, dates, adults: Math.ceil(input.adults / input.rooms), children: Math.ceil(input.children / input.rooms),
     plans, onlyPlanId: input.ratePlanId ?? null,
   });
-  const extras = effectiveExtras(base, plans, rt.id, rt);
+  let extras = effectiveExtras(base, plans, rt.id, rt);
+  if (frozen) {
+    base = base.map((n) => ({ ...n, rateMinor: frozen.nightly[n.date] ?? frozen.fallback, planId: null, planName: null, basis: "BASE" as const }));
+    extras = { extraAdultRateMinor: frozen.extraAdultMinor, extraChildRateMinor: frozen.extraChildMinor };
+  }
   // Each night is discounted on its own rate, and the cap applies to every night.
   const discount = { percentBp: input.discountPercentBp, amountMinor: input.discountAmountMinor };
   const rated = base.map((n) => {
@@ -132,7 +139,7 @@ export async function computeQuote(tx: Tx, ctx: Ctx, propertyId: string, input: 
   };
   // Extra-person charges are priced per room from how guests are spread, and taxed on the whole nightly tariff.
   const extraPerRoom = Array.from({ length: input.rooms }, (_, i) =>
-    extraPersonPerNight({ adults: Math.max(1, shareOf(input.adults, input.rooms, i)), children: shareOf(input.children, input.rooms, i), baseOccupancy: rt.baseOccupancy, ...extras }),
+    extraPersonPerNight({ adults: Math.max(1, shareOf(input.adults, input.rooms, i)), children: shareOf(input.children, input.rooms, i), baseOccupancy: frozen?.baseOccupancy ?? rt.baseOccupancy, ...extras }),
   );
   const nightly: Quote["nightly"] = [];
   let extraTotal = 0;

@@ -83,7 +83,7 @@ const tone: Record<string, string> = {
 export function Badge({ value }: { value: string }) {
   return (
     <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${tone[value] ?? "bg-slate-100 text-slate-700"}`}>
-      {value.replace("_", " ").toLowerCase()}
+      {value === "TENTATIVE" ? "pending" : value.replace("_", " ").toLowerCase()}
     </span>
   );
 }

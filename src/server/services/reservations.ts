@@ -8,6 +8,7 @@ import { assertTransition, nightsBetween, type ReservationStatus } from "@/serve
 import { audit } from "./audit";
 import { findFreeRooms, toDate } from "./availability";
 import { folioBalance, postRoomNightsTx } from "./billing";
+import { checklistTx } from "./confirmation";
 import { notifyTx } from "./notifications";
 
 
@@ -79,7 +80,13 @@ export async function cancelReservation(db: PrismaClient, ctx: Ctx, id: string, 
 
 export async function confirmReservation(db: PrismaClient, ctx: Ctx, id: string) {
   authorize(ctx, "reservations.modify");
-  return transition(db, ctx, id, "CONFIRMED");
+  requireProperty(ctx);
+  return withTenant(db, ctx.tenantId, async (tx) => {
+    // A held booking is confirmed only once the checklist has no blockers (a room held, valid dates and guests, an open category).
+    const { blockers } = await checklistTx(tx, ctx, id);
+    if (blockers.length) throw new AppError("VALIDATION", `Cannot confirm yet: ${blockers.map((b) => b.detail).join(" ")}`);
+    return transitionTx(tx, ctx, id, "CONFIRMED");
+  });
 }
 
 export async function markNoShow(db: PrismaClient, ctx: Ctx, id: string) {
@@ -333,7 +340,7 @@ export type TimelineItem = { at: Date; by: string; what: string; detail?: string
 
 const ACTION_LABELS: Record<string, string> = {
   "reservation.create": "Reservation created", "reservation.change_departure": "Departure date changed", "reservation.move_room": "Room changed",
-  "reservation.assign_room": "Room assigned", "reservation.registration": "Registration updated", "reservation.id_verified": "ID verified",
+  "reservation.assign_room": "Room assigned", "reservation.registration": "Registration updated", "reservation.id_verified": "ID verified", "reservation.modify": "Booking changed",
   "reservation.requests": "Requests or VIP updated", "reservation.no_show_confirmed": "No-show confirmed", "checkout.waive_balance": "Balance waived at checkout",
 };
 const brief = (o: unknown) => {

@@ -161,7 +161,7 @@ export default async function Reservations({ searchParams }: PageProps<"/app/res
                 <Field label="Booking status">
                   <select name="status" defaultValue="CONFIRMED" className={input}>
                     <option value="CONFIRMED">Confirmed</option>
-                    <option value="TENTATIVE">Tentative (holds the room)</option>
+                    <option value="TENTATIVE">Pending (holds the room)</option>
                   </select>
                 </Field>
                 {discounted && (

@@ -6,6 +6,9 @@ import { formatInr } from "@/server/money";
 import { getCtx } from "@/server/session";
 import { bookingConfirmation } from "@/server/services/booking";
 import { settingsFor } from "@/server/services/settings";
+import { roleHasPermission } from "@/server/auth/permissions";
+import { getConsent, messagingStatus } from "@/server/services/messaging";
+import ReservationMessages from "../../../messages/ReservationMessages";
 import { PrintButton } from "../../../PrintButton";
 
 export default async function Confirmation({ params, searchParams }: PageProps<"/app/reservations/[id]/confirmation">) {
@@ -14,6 +17,8 @@ export default async function Confirmation({ params, searchParams }: PageProps<"
   const ctx = await getCtx();
   const { property, group, totalMinor, paidMinor, balanceMinor } = await bookingConfirmation(getDb(), ctx, id);
   const first = group[0];
+  const canMessage = roleHasPermission(ctx.role, "guests.manage", ctx.extra);
+  const consent = canMessage ? await getConsent(getDb(), ctx, first.guestId) : null;
   const st = await settingsFor(getDb(), ctx);
   const depositMinor = Math.floor((totalMinor * st["reservation.depositPercent"] + 50) / 100);
   const policies = [["Booking policies", st["general.bookingPolicies"]], ["Cancellation", st["reservation.cancellationPolicy"]], ["No-show", st["reservation.noShowRule"]], ["Children", st["reservation.childPolicy"]]].filter(([, v]) => v);
@@ -28,16 +33,23 @@ export default async function Confirmation({ params, searchParams }: PageProps<"
         )}
         <div className="flex flex-wrap items-center gap-2">
           <PrintButton />
+          <a href={`/app/reservations/${first.id}/confirmation/pdf`} className="text-sm underline">Download PDF</a>
           <Link href={`/app/reservations/${first.id}`} className="text-sm underline">View reservation</Link>
           <Link href="/app/reservations/new" className="text-sm underline">New booking</Link>
           <Link href="/app/dashboard" className="text-sm underline">Room board</Link>
         </div>
       </div>
+      {canMessage && (
+        <div className="mb-3 print:hidden">
+          <ReservationMessages reservationId={first.id} guestId={first.guestId} back={`/app/reservations/${first.id}/confirmation`} consent={consent ? { status: consent.status, source: consent.source } : null} hasPhone={!!first.guest.phone} testMode={!messagingStatus().configured} />
+          <p className="mt-1 text-xs text-slate-600">Messages go out only with the guest&rsquo;s consent and are marked sent only when the provider confirms. Email delivery is not set up for this system; use the PDF to email it yourself.</p>
+        </div>
+      )}
       <article className="rounded-lg border border-slate-200 bg-white p-6 text-sm shadow-sm print:border-0 print:shadow-none">
         <header className="flex flex-wrap justify-between gap-4">
           <div>
             <h1 className="text-xl font-semibold">Booking confirmation</h1>
-            {first.status === "TENTATIVE" && <p className="font-medium text-amber-800">Tentative: room held, not yet confirmed.</p>}
+            {first.status === "TENTATIVE" && <p className="font-medium text-amber-800">Pending: room held, not yet confirmed.</p>}
             {group.map((g) => <p key={g.id} className="font-mono">{g.reference}</p>)}
             {first.groupRef && <p className="text-xs text-slate-500">Group {first.groupRef}</p>}
           </div>

@@ -12,7 +12,7 @@ const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Reservation status is shown by colour, an icon and a text label; the room's own status is shown in the left column. */
 const STATUS: Record<string, { label: string; icon: string; cls: string }> = {
-  TENTATIVE: { label: "Tentative", icon: "◔", cls: "border-dashed border-amber-600 bg-amber-50 text-amber-950" },
+  TENTATIVE: { label: "Pending", icon: "◔", cls: "border-dashed border-amber-600 bg-amber-50 text-amber-950" },
   CONFIRMED: { label: "Confirmed", icon: "●", cls: "border-blue-600 bg-blue-100 text-blue-950" },
   CHECKED_IN: { label: "In house", icon: "▶", cls: "border-green-700 bg-green-100 text-green-950" },
   CHECKED_OUT: { label: "Checked out", icon: "■", cls: "border-slate-500 bg-slate-100 text-slate-800" },

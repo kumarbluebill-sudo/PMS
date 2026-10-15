@@ -79,7 +79,7 @@ export default async function OperationsPage({ searchParams }: PageProps<"/app/o
     { id: "departures", title: "Departures expected", hint: "Checked-in guests leaving on this date", rows: o.departuresExpected, mode: "departure" },
     { id: "checked-out", title: "Checked out", hint: "Left on this date", rows: o.checkedOutToday, mode: "plain" },
     { id: "overdue", title: "Overdue departures", hint: "Still in house after their departure date", rows: o.overdueDepartures, mode: "departure", tone: "warn" },
-    { id: "to-confirm", title: "Reservations needing confirmation", hint: "Tentative or inquiry", rows: o.toConfirm, mode: "plain" },
+    { id: "to-confirm", title: "Reservations needing confirmation", hint: "Pending or inquiry", rows: o.toConfirm, mode: "plain" },
     { id: "registration", title: "Incomplete registration", hint: "Missing mobile number, ID or registration", rows: o.incompleteRegistration, mode: "arrival" },
     { id: "unpaid", title: "Unpaid balances", hint: "In-house guests who owe money", rows: o.unpaid, mode: "departure" },
     { id: "early", title: "Early check-in requests", hint: "Arriving on this date", rows: o.earlyRequests, mode: "arrival" },

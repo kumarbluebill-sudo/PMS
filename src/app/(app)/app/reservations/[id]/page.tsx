@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { extendStayAction, moveRoomAction } from "@/app/account-actions";
-import { Badge, btnGhost, Card, ErrorBanner, fmtDate, PageHeader } from "@/app/ui";
+import { modifyReservationAction } from "@/app/reservation-actions";
+import { Badge, btn, btnGhost, Card, ErrorBanner, Field, fmtDate, input, inr, PageHeader } from "@/app/ui";
+import { previewModification, reservationChecklist } from "@/server/services/confirmation";
+import { AppError } from "@/server/errors";
 import { roleHasPermission } from "@/server/auth/permissions";
 import { getDb } from "@/server/db/client";
 import { getCtx } from "@/server/session";
@@ -13,12 +16,24 @@ import { ReservationActions } from "../../ReservationActions";
 
 export default async function StayDetail({ params, searchParams }: PageProps<"/app/reservations/[id]">) {
   const { id } = await params;
-  const { error, ok } = await searchParams;
+  const sp = await searchParams;
+  const { error, ok } = sp;
+  const one = (v: string | string[] | undefined) => (typeof v === "string" ? v : "");
   const ctx = await getCtx();
   const db = getDb();
   const [r, timeline] = await Promise.all([getReservation(db, ctx, id), reservationTimeline(db, ctx, id)]);
   const canModify = roleHasPermission(ctx.role, "reservations.modify", ctx.extra) && (r.status === "CONFIRMED" || r.status === "CHECKED_IN");
   const rooms = canModify ? await listRooms(db, ctx) : [];
+  const canChange = roleHasPermission(ctx.role, "reservations.modify", ctx.extra) && (r.status === "TENTATIVE" || r.status === "CONFIRMED");
+  const checklist = r.status === "TENTATIVE" ? await reservationChecklist(db, ctx, id) : null;
+  const mod = { arrival: one(sp.m_arrival) || fmtDate(r.arrival), departure: one(sp.m_departure) || fmtDate(r.departure), adults: one(sp.m_adults) || String(r.adults), children: one(sp.m_children) || String(r.children) };
+  const wantsPreview = canChange && !!one(sp.m_arrival);
+  let preview: Awaited<ReturnType<typeof previewModification>> | null = null;
+  let previewError: string | null = null;
+  if (wantsPreview) {
+    try { preview = await previewModification(db, ctx, id, { arrival: mod.arrival, departure: mod.departure, adults: Number(mod.adults), children: Number(mod.children) }); }
+    catch (e) { previewError = e instanceof AppError ? e.message : "Check the dates and guest numbers."; }
+  }
   const back = `/app/reservations/${r.id}`;
   const canMessage = roleHasPermission(ctx.role, "guests.manage", ctx.extra);
   const consent = canMessage ? await getConsent(db, ctx, r.guestId) : null;
@@ -62,6 +77,46 @@ export default async function StayDetail({ params, searchParams }: PageProps<"/a
           <Card title="Guest feedback">
             <p className="mb-2 text-sm text-slate-600">Create a private, single-use link the guest can open without logging in.</p>
             <FeedbackLinkButton reservationId={r.id} />
+          </Card>
+        )}
+        {checklist && (
+          <Card title="Before you confirm">
+            <ul className="space-y-1.5 text-sm" aria-label="Confirmation checklist">
+              {checklist.items.map((i) => (
+                <li key={i.key} className="flex items-start gap-2">
+                  <span aria-hidden className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full text-xs font-bold ${i.ok ? "bg-green-100 text-green-800" : i.level === "BLOCKER" ? "bg-red-100 text-red-900" : "bg-amber-100 text-amber-900"}`}>{i.ok ? "✓" : i.level === "BLOCKER" ? "✕" : "!"}</span>
+                  <span><span className="font-medium">{i.label}</span><span className="sr-only">{i.ok ? " (ready)" : i.level === "BLOCKER" ? " (must fix)" : " (check)"}</span><span className="block text-xs text-slate-700">{i.detail}</span></span>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-2 text-xs text-slate-700">{checklist.canConfirm ? "Nothing blocks confirming. Items marked ! are worth a look but do not stop you." : "Fix the items marked ✕ before confirming."}</p>
+          </Card>
+        )}
+        {canChange && (
+          <Card title="Change dates or guests">
+            <p className="mb-2 text-xs text-slate-700">Preview the new price, then save. Prices follow your property&rsquo;s setting: keep the booked rates, or use today&rsquo;s. The change is recorded with who made it.</p>
+            <form method="get" className="grid grid-cols-2 gap-2">
+              <Field label="New check-in"><input type="date" name="m_arrival" defaultValue={mod.arrival} required className={input} /></Field>
+              <Field label="New check-out"><input type="date" name="m_departure" defaultValue={mod.departure} required className={input} /></Field>
+              <Field label="Adults"><input type="number" name="m_adults" min={1} defaultValue={mod.adults} className={input} /></Field>
+              <Field label="Children"><input type="number" name="m_children" min={0} defaultValue={mod.children} className={input} /></Field>
+              <div className="col-span-2"><button className={btnGhost}>Preview change</button></div>
+            </form>
+            {previewError && <p role="alert" className="mt-2 rounded border border-red-300 bg-red-50 p-2 text-sm text-red-900">{previewError}</p>}
+            {preview && (
+              <div className="mt-3 space-y-2 border-t pt-3 text-sm" role="status">
+                {preview.canSeeMoney ? (
+                  <p>{preview.nights} night(s). Total was <strong>{inr(preview.oldTotalMinor)}</strong>, becomes <strong>{inr(preview.newTotalMinor)}</strong> ({preview.differenceMinor >= 0 ? "+" : ""}{inr(preview.differenceMinor)}), tax included. Pricing: {preview.policy === "KEEP_RATE" ? "booked rates kept" : "today's rates"}.</p>
+                ) : <p>{preview.nights} night(s). Pricing: {preview.policy === "KEEP_RATE" ? "booked rates kept" : "today's rates"}.</p>}
+                <form action={modifyReservationAction} className="space-y-2">
+                  <input type="hidden" name="id" value={r.id} /><input type="hidden" name="expectedUpdatedAt" value={r.updatedAt.toISOString()} />
+                  <input type="hidden" name="arrival" value={mod.arrival} /><input type="hidden" name="departure" value={mod.departure} />
+                  <input type="hidden" name="adults" value={mod.adults} /><input type="hidden" name="children" value={mod.children} /><input type="hidden" name="previewTotal" value={preview.newTotalMinor} />
+                  <Field label="Reason for the change (optional)"><input name="reason" maxLength={200} className={input} /></Field>
+                  <button className={btn}>Save change</button>
+                </form>
+              </div>
+            )}
           </Card>
         )}
         {canModify && (
