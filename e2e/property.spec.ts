@@ -126,6 +126,15 @@ test("property management: categories, bulk rooms, rate plans, archive and react
   await page.getByRole("button", { name: "Save profile" }).click();
   await expect(page.getByText("Property profile saved.")).toBeVisible();
 
+  // The invoice design preview is a PDF shown in a frame on this site: it must be allowed to be framed by this site only.
+  const prev = await page.request.get("/app/settings/invoice-design/preview?theme=LUXURY");
+  expect(prev.status()).toBe(200);
+  expect(prev.headers()["content-type"]).toBe("application/pdf");
+  expect(prev.headers()["x-frame-options"]).toBe("SAMEORIGIN");
+  expect(prev.headers()["content-security-policy"]).toContain("frame-ancestors 'self'");
+  const login = await page.request.get("/login");
+  expect(login.headers()["x-frame-options"]).toBe("DENY");
+
   // Phones: no sideways page scroll on the new screens.
   await page.setViewportSize({ width: 390, height: 844 });
   for (const path of ["/app/property", "/app/rooms", "/app/room-types", "/app/rates", "/app/structure", "/app/settings/property"]) {
