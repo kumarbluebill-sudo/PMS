@@ -45,9 +45,11 @@ const GROUPS: { label: string; items: Def[] }[] = [
   {
     label: "Property",
     items: [
+      { href: "/app/property", label: "Property overview", perm: "rooms.view", icon: "building" },
       { href: "/app/rooms", label: "Rooms", perm: "rooms.view", icon: "bed" },
-      { href: "/app/structure", label: "Buildings & floors", perm: "rooms.view", icon: "building" },
-      { href: "/app/room-types", label: "Room types", perm: "rooms.view", icon: "tag" },
+      { href: "/app/room-types", label: "Room categories", perm: "rooms.view", icon: "tag" },
+      { href: "/app/structure", label: "Floors and layout", perm: "rooms.view", icon: "building" },
+      { href: "/app/rates", label: "Rate plans", perm: "rooms.view", icon: "tax" },
     ],
   },
   {
@@ -82,7 +84,9 @@ export default async function AppLayout({ children }: LayoutProps<"/app">) {
     ["/app/settings/reservations", "Front office and dashboard", "No-show review time, ID rules, refresh", "settings.view"],
     ["/app/settings/rooms", "Room-status colours", "Names and colours shown on the board", "settings.view"],
     ["/app/settings/general", "Hotel configuration", "Name, contact, time zone, policies", "settings.view"],
-    ["/app/structure", "Buildings and floors", "Where rooms are", "rooms.manage"],
+    ["/app/property", "Property management", "Rooms, categories, floors, rate plans", "rooms.view"],
+    ["/app/settings/property", "Property profile", "Contact, timings, status", "settings.view"],
+    ["/app/structure", "Floors and layout", "Where rooms are", "rooms.manage"],
     ["/app/room-types", "Room categories", "Occupancy, rates, amenities", "rooms.manage"],
     ["/app/users", "Users", "Accounts and access", "users.manage"],
     ["/app/settings/permissions", "Roles and permissions", "What each role can do", "settings.view"],

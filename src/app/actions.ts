@@ -158,7 +158,7 @@ export async function addGuestAction(fd: FormData) {
 function percentToBp(v: string): number | undefined {
   const t = v.trim();
   if (!t) return undefined;
-  if (!/^d{1,3}(.d{1,2})?$/.test(t) || Number(t) > 100) throw new AppError("VALIDATION", "Enter a discount percentage between 0 and 100.");
+  if (!/^\d{1,3}(\.\d{1,2})?$/.test(t) || Number(t) > 100) throw new AppError("VALIDATION", "Enter a discount percentage between 0 and 100.");
   const bp = Math.round(Number(t) * 100);
   return bp > 0 ? bp : undefined;
 }
@@ -167,7 +167,7 @@ const rupeesOpt = (v: string) => (v.trim() ? rupeesToMinor(v) : undefined);
 export async function addBookingAction(fd: FormData) {
   const ctx = await getCtx();
   const keep = new URLSearchParams();
-  for (const k of ["roomTypeId", "roomId", "arrival", "departure", "rooms", "adults", "children", "discountPct", "discountAmt"]) {
+  for (const k of ["roomTypeId", "roomId", "arrival", "departure", "rooms", "adults", "children", "discountPct", "discountAmt", "ratePlanId"]) {
     const v = str(fd.get(k));
     if (v) keep.set(k, v);
   }
@@ -186,7 +186,7 @@ export async function addBookingAction(fd: FormData) {
               address: str(fd.get("g_address")) || undefined, idType: str(fd.get("g_idType")) || undefined, idNumber: str(fd.get("g_idNumber")) || undefined,
             },
           }),
-      roomTypeId: str(fd.get("roomTypeId")), roomId: str(fd.get("roomId")) || undefined,
+      roomTypeId: str(fd.get("roomTypeId")), roomId: str(fd.get("roomId")) || undefined, ratePlanId: str(fd.get("ratePlanId")) || undefined,
       arrival: str(fd.get("arrival")), departure: str(fd.get("departure")),
       rooms: num(fd.get("rooms"), 1), adults: num(fd.get("adults"), 1), children: num(fd.get("children"), 0),
       source: str(fd.get("source")) || "WALK_IN", companyName: str(fd.get("companyName")) || undefined, agentName: str(fd.get("agentName")) || undefined, externalRef: str(fd.get("externalRef")) || undefined,

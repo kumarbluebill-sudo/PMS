@@ -136,3 +136,27 @@ Verified by Vitest (282 tests, 34 files) and Playwright (8 tests, including the 
 - Advance receipts already existed as payment receipts taken before arrival. There is no separate cancellation document; a credit note covers invoiced corrections.
 - Logo upload (needs file storage), a Unicode PDF font (the rupee sign prints as "Rs."), receipt printer themes beyond the 80 mm layout, and night audit are still open.
 - GST treatment and rates must be reviewed by a qualified tax professional.
+
+## Property Management redesign (2026-10-17)
+Verified by Vitest (307 tests, 36 files, including `tests/integration/property.test.ts`, `rates.test.ts`) and Playwright (9 tests; `e2e/property.spec.ts` covers categories, bulk rooms with preview, rate plans, overlap refusal, archive through the dialog, reactivate, axe and phone-width checks). Migration `20261017100000_property_management`.
+
+| Area | Status | Notes |
+|---|---|---|
+| Navigation | Done | Six sections with a shared tab bar: Overview `/app/property`, Rooms, Room categories, Floors and layout, Rate plans, Property settings |
+| Overview | Done | Property switcher, counts (rooms, categories, floors, active plans), search, add buttons by permission |
+| Rooms | Done | Table or card view, filters, view and edit page, category and floor assignment, archive with reason, reactivate, delete only if never used, bulk add with preview, CSV and Excel import (existing) |
+| Categories | Done | Code, occupancy, bed, amenities, photo links, base and extra-person rates; deactivate, move rooms to another category, delete only if unused; duplicate names and codes refused |
+| Floors and layout | Done | Rename, reorder, deactivate (refused while active rooms remain), delete only if empty, assign many rooms with before and after preview, floor map tiles with text status |
+| Rate plans | Done | Weekday, weekend, one-adult, extra-person, seasonal dates, priority, meal plan, refundable, stay limits; duplicate, archive, preview by date; overlaps at equal priority refused; precedence in `docs/RATES.md` |
+| Booking integration | Done | Quote shows the plan and per-night rates, includes extra-person charges, optional plan choice; the price is frozen on the reservation; room nights post from the frozen rates |
+| Property profile | Done | Code, addresses, phone, email, timezone, currency, times, description, amenities, logo and image links, status; deactivation refused with upcoming bookings; deletion refused when records exist |
+| Safety | Done | Archived rooms, inactive categories, inactive floors drop out of availability, quotes, board, calendar, housekeeping and analytics; history keeps pointing at them; stale edits detected with `updatedAt`; every change audited |
+
+Also fixed: the booking form rejected every percentage discount because of a broken pattern in `percentToBp`.
+
+### Limits (honest list)
+- Logo and photos are https links; there is no file upload (needs storage).
+- GSTIN and registration are shown on the profile but changed under GST and tax, which needs a reason for each change.
+- A guest is chosen a plan or gets the best applicable one; a stay extended later is not repriced from a plan.
+- Archiving a room removes it from historical occupancy denominators in analytics (they use today's active rooms).
+- Free-text category names with trailing differences are compared case-insensitively but not fuzzy-matched.

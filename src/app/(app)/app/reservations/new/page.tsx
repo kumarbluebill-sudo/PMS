@@ -9,6 +9,7 @@ import { getCtx } from "@/server/session";
 import { availabilityByType, quoteStay, ID_TYPES, type Quote } from "@/server/services/booking";
 import { listRoomTypes } from "@/server/services/rooms";
 import { searchGuests } from "@/server/services/guests";
+import { listRatePlans } from "@/server/services/property";
 import { propertyToday } from "@/server/services/roomBlocks";
 import { settingsFor } from "@/server/services/settings";
 
@@ -37,7 +38,9 @@ export default async function Reservations({ searchParams }: PageProps<"/app/res
     children: one(sp.children) || "0",
     discountPct: one(sp.discountPct),
     discountAmt: one(sp.discountAmt),
+    ratePlanId: one(sp.ratePlanId),
   };
+  const plans = can("rooms.view") ? (await listRatePlans(db, ctx, { status: "active", roomTypeId: v.roomTypeId || undefined })).plans : [];
 
   // Step 2: availability and price, computed on the server from the saved rates and tax rules.
   let quote: Quote | null = null;
@@ -51,6 +54,7 @@ export default async function Reservations({ searchParams }: PageProps<"/app/res
       quote = await quoteStay(db, ctx, {
         roomTypeId: v.roomTypeId, arrival: v.arrival, departure: v.departure,
         rooms: Number(v.rooms) || 1, adults: Number(v.adults) || 1, children: Number(v.children) || 0,
+        ...(v.ratePlanId ? { ratePlanId: v.ratePlanId } : {}),
         ...(pct && Number.isFinite(pct) ? { discountPercentBp: pct } : {}),
         ...(amtMatch ? { discountAmountMinor: Number(amtMatch[1]) * 100 + Number((amtMatch[2] ?? "").padEnd(2, "0") || "0") } : {}),
       });
@@ -85,6 +89,14 @@ export default async function Reservations({ searchParams }: PageProps<"/app/res
                 <Field label="Adults"><input name="adults" type="number" min={1} defaultValue={v.adults} className={input} /></Field>
                 <Field label="Children"><input name="children" type="number" min={0} defaultValue={v.children} className={input} /></Field>
               </div>
+              {plans.length > 0 && (
+                <Field label="Rate plan">
+                  <select name="ratePlanId" defaultValue={v.ratePlanId} className={input}>
+                    <option value="">Best available rate</option>
+                    {plans.map((p) => <option key={p.id} value={p.id}>{p.name}{p.validFrom || p.validTo ? ` (${p.validFrom?.toISOString().slice(0, 10) ?? "…"} to ${p.validTo?.toISOString().slice(0, 10) ?? "…"})` : ""}</option>)}
+                  </select>
+                </Field>
+              )}
               {can("billing.discount") && (
                 <div className="grid grid-cols-2 gap-2">
                   <Field label="Discount %"><input name="discountPct" inputMode="decimal" defaultValue={v.discountPct} className={input} /></Field>
@@ -107,12 +119,20 @@ export default async function Reservations({ searchParams }: PageProps<"/app/res
                     : `Only ${quote.available} ${quote.roomType} room(s) available; you asked for ${quote.rooms}.`}
               </p>
               <dl className="grid grid-cols-[1fr_auto] gap-y-1 text-sm">
-                <dt>Rate per night{discounted ? " (after discount)" : ""}</dt><dd>{inr(quote.rateMinor)}</dd>
+                <dt>Rate per night{quote.rateVaries ? " (first night; see below)" : ""}{discounted ? " (after discount)" : ""}</dt><dd>{inr(quote.rateMinor)}</dd>
+                <dt>Rate plan</dt><dd>{quote.ratePlan?.name ?? "Default category rate"}</dd>
                 {discounted && (<><dt className="text-slate-500">Base rate</dt><dd className="text-slate-500 line-through">{inr(quote.baseRateMinor)}</dd></>)}
-                <dt>{quote.nights} night(s) × {quote.rooms} room(s)</dt><dd>{inr(quote.subtotalMinor)}</dd>
+                <dt>{quote.nights} night(s) × {quote.rooms} room(s){quote.extraPersonMinor > 0 ? ", incl. extra-person charges" : ""}</dt><dd>{inr(quote.subtotalMinor)}</dd>
+                {quote.extraPersonMinor > 0 && (<><dt className="text-slate-600">of which extra persons</dt><dd className="text-slate-600">{inr(quote.extraPersonMinor)}</dd></>)}
                 <dt>{quote.taxStatus === "NOT_REGISTERED" ? "GST (not registered)" : "GST"}</dt><dd>{inr(quote.taxMinor)}</dd>
                 <dt className="font-semibold">Estimated total</dt><dd className="font-semibold">{inr(quote.totalMinor)}</dd>
               </dl>
+              {quote.rateVaries && (
+                <table className="mt-2 w-full text-left text-xs">
+                  <caption className="mb-1 text-left font-medium text-slate-700">Rate by night (before GST)</caption>
+                  <tbody>{quote.nightly.map((n) => <tr key={n.date}><td>{n.date}</td><td className="text-right tabular-nums">{inr(n.rateMinor)}</td><td className="pl-2 text-slate-600">{n.planName ?? "default"}</td></tr>)}</tbody>
+                </table>
+              )}
               {quote.taxNote && <p className="mt-2 text-xs text-slate-600">{quote.taxNote}</p>}
               {quote.depositRequiredMinor > 0 && <p className="mt-2 text-sm"><strong>Deposit requested:</strong> {inr(quote.depositRequiredMinor)} ({st["reservation.depositPercent"]}% of the estimate)</p>}
               <p className="mt-2 text-xs text-slate-500">This is an estimate. The final bill is built from the folio when the stay is posted. The server recalculates everything when you save.</p>
@@ -133,7 +153,7 @@ export default async function Reservations({ searchParams }: PageProps<"/app/res
           {quote && canBook && (
             <Card title="3. Guest and booking details">
               <form action={addBookingAction} className="grid gap-3 md:grid-cols-2">
-                {(["roomTypeId", "roomId", "arrival", "departure", "rooms", "adults", "children", "discountPct", "discountAmt"] as const).map((k) => (
+                {(["roomTypeId", "roomId", "arrival", "departure", "rooms", "adults", "children", "discountPct", "discountAmt", "ratePlanId"] as const).map((k) => (
                   <input key={k} type="hidden" name={k} value={v[k]} />
                 ))}
                 {can("guests.view") && guests.length > 0 && (
@@ -191,7 +211,7 @@ export default async function Reservations({ searchParams }: PageProps<"/app/res
                 </details>
                 <div className="md:col-span-2">
                   <button className={btn}>Save booking</button>
-                  <span className="ml-3 text-xs text-slate-500">Rate plan: Standard (room type base rate).</span>
+                  <span className="ml-3 text-xs text-slate-500">Rate plan: {quote.ratePlan?.name ?? "default category rate"}. The price is fixed when you save.</span>
                 </div>
               </form>
             </Card>

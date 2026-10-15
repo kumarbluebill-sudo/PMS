@@ -5,7 +5,8 @@ Source of truth: `prisma/schema.prisma` + `prisma/migrations/*` (the `constraint
 | Area | Tables |
 |---|---|
 | Identity & tenancy | `tenants`, `users`, `tenant_memberships` (role + `extraPermissions`), `properties`, `user_property_roles`, `auth_tokens`, `email_outbox` |
-| Inventory | `room_types`, `rooms` (housekeeping status, `outOfOrder`), `room_assignments` |
+| Inventory | `room_types` (`code`, `active`, `imageUrls`), `rooms` (housekeeping status, `outOfOrder`, `active`/`archivedAt`, `name`), `room_assignments`, `buildings`, `floors` |
+| Rates | `rate_plans`, `rate_plan_rates` (see `docs/RATES.md`); `reservations.rateSnapshot` and `ratePlanId` freeze the booked price |
 | Guests & stays | `guests`, `reservations`, `reservation_status_history` |
 | Operations | `housekeeping_tasks`, `maintenance_requests` (`blocksRoom`) |
 | Compliance | `audit_logs` (append-only) |
@@ -46,3 +47,10 @@ Debit notes, advance receipts, folio transfers, expenses/suppliers, channels, su
 
 ## Added 2026-10-15
 `reservations`: `vip`, `etaTime`, `earlyCheckinRequest`, `lateCheckoutRequest`, `registrationCompletedAt`, `idVerifiedAt`, `idVerifiedBy`, `noShowAt`. `alert_acks` (one acknowledgement or resolution per property and alert key; alerts themselves are computed from live data). Same tenant RLS policy and grants as other tables.
+
+## Property management (2026-10-17)
+- Migration `20261017100000_property_management` is additive. `properties` gain `code`, `phone`, `email`, `description`, `amenities`, `logoUrl`, `imageUrls`, `operationalAddress` and `status` (ACTIVE, INACTIVE, ARCHIVED). `room_types` and `rooms` gain `active` and `updatedAt`; rooms also `name`, `archivedAt`, `notes`.
+- Partial unique indexes: property code per business and category code per property, case-insensitive, only where the code is set. Room numbers stay unique per property, archived rooms included.
+- `rate_plans` and `rate_plan_rates` carry tenant RLS and `pms_app` grants; checks keep dates, stay limits, meal plan and amounts valid.
+- The migration backfills `reservations.agreedRateMinor` and `rateSnapshot` for open bookings so later rate edits cannot reprice them.
+- Nothing is deleted by cascade except a plan's own rate lines. Rooms, categories, floors, buildings, plans and properties are archived or deactivated; permanent deletion is allowed only when nothing references the record (`services/property.ts`).
