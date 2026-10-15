@@ -140,46 +140,50 @@ async function nextNumber(tx: Tx, ctx: Ctx, propertyId: string, series: string, 
 const seriesFor = (prefix: string, kind: string) =>
   kind === "TAX_INVOICE" ? prefix : kind === "BILL_OF_SUPPLY" ? `${prefix}B` : kind === "CREDIT_NOTE" ? `${prefix}C` : `${prefix}D`;
 
+/** Issues an invoice inside the caller's transaction (used on its own and by the combined checkout). Authority is checked by the caller. */
+export async function issueInvoiceTx(tx: Tx, ctx: Ctx, folioId: string, input: { entryIds?: string[]; recipient?: Recipient } = {}) {
+  const recipientIn = recipientSchema.parse(input.recipient);
+    const folio0 = await lockFolio(tx, ctx, folioId);
+    const folio = await tx.folio.findUniqueOrThrow({ where: { id: folio0.id }, include: { reservation: { include: { guest: true } } } });
+    const { property, snapshot } = await supplierSnapshot(tx, folio.propertyId);
+    const entries = await pendingEntries(tx, folioId, input.entryIds);
+    const recipient = resolveRecipient(folio.reservation.guest, recipientIn, folio.label === "COMPANY" ? folio.billTo : null);
+    const kind = documentKind(snapshot.registered, entries);
+    const totals = entries.reduce(addTotals, ZERO);
+    if (totals.gross < 0) throw new AppError("VALIDATION", "An invoice cannot have a negative total.");
+    const date = todayIn(property.timezone);
+    const fy = financialYear(date);
+    const { seq, number } = await nextNumber(tx, ctx, property.id, seriesFor(property.invoicePrefix, kind), fy);
+    const pos = (entries[0].taxDetail as TaxDetail | null)?.placeOfSupplyState ?? snapshot.stateCode ?? null;
+
+    const inv = await tx.invoice.create({
+      data: {
+        tenantId: ctx.tenantId, propertyId: property.id, folioId, kind, series: seriesFor(property.invoicePrefix, kind),
+        financialYear: fy, seq, number, supplier: snapshot, recipient, placeOfSupply: pos, netMinor: totals.net,
+        cgstMinor: totals.cgst, sgstMinor: totals.sgst, igstMinor: totals.igst, cessMinor: totals.cess, grossMinor: totals.gross,
+        issuedBy: ctx.userId,
+        lines: {
+          create: toLines(entries).map((l) => ({
+            tenantId: ctx.tenantId, folioEntryId: l.entryId, description: l.description, sacCode: l.sacCode, quantity: l.quantity,
+            netMinor: l.netMinor, cgstMinor: l.cgstMinor, sgstMinor: l.sgstMinor, igstMinor: l.igstMinor, cessMinor: l.cessMinor,
+            grossMinor: l.grossMinor, taxDetail: l.taxDetail as Prisma.InputJsonValue,
+          })),
+        },
+      },
+    });
+    await audit(tx, ctx, {
+      action: "invoice.issue", entityType: "Invoice", entityId: inv.id,
+      after: { number, kind, grossMinor: totals.gross, lines: entries.length },
+    });
+    return inv;
+}
+
 export async function issueInvoice(db: PrismaClient, ctx: Ctx, folioId: string, input: { entryIds?: string[]; recipient?: Recipient } = {}) {
   authorize(ctx, "invoices.issue");
   requireProperty(ctx);
-  const recipientIn = recipientSchema.parse(input.recipient);
+  recipientSchema.parse(input.recipient);
   try {
-    return await withTenant(db, ctx.tenantId, async (tx) => {
-      const folio0 = await lockFolio(tx, ctx, folioId);
-      const folio = await tx.folio.findUniqueOrThrow({ where: { id: folio0.id }, include: { reservation: { include: { guest: true } } } });
-      const { property, snapshot } = await supplierSnapshot(tx, folio.propertyId);
-      const entries = await pendingEntries(tx, folioId, input.entryIds);
-      const recipient = resolveRecipient(folio.reservation.guest, recipientIn, folio.label === "COMPANY" ? folio.billTo : null);
-      const kind = documentKind(snapshot.registered, entries);
-      const totals = entries.reduce(addTotals, ZERO);
-      if (totals.gross < 0) throw new AppError("VALIDATION", "An invoice cannot have a negative total.");
-      const date = todayIn(property.timezone);
-      const fy = financialYear(date);
-      const { seq, number } = await nextNumber(tx, ctx, property.id, seriesFor(property.invoicePrefix, kind), fy);
-      const pos = (entries[0].taxDetail as TaxDetail | null)?.placeOfSupplyState ?? snapshot.stateCode ?? null;
-
-      const inv = await tx.invoice.create({
-        data: {
-          tenantId: ctx.tenantId, propertyId: property.id, folioId, kind, series: seriesFor(property.invoicePrefix, kind),
-          financialYear: fy, seq, number, supplier: snapshot, recipient, placeOfSupply: pos, netMinor: totals.net,
-          cgstMinor: totals.cgst, sgstMinor: totals.sgst, igstMinor: totals.igst, cessMinor: totals.cess, grossMinor: totals.gross,
-          issuedBy: ctx.userId,
-          lines: {
-            create: toLines(entries).map((l) => ({
-              tenantId: ctx.tenantId, folioEntryId: l.entryId, description: l.description, sacCode: l.sacCode, quantity: l.quantity,
-              netMinor: l.netMinor, cgstMinor: l.cgstMinor, sgstMinor: l.sgstMinor, igstMinor: l.igstMinor, cessMinor: l.cessMinor,
-              grossMinor: l.grossMinor, taxDetail: l.taxDetail as Prisma.InputJsonValue,
-            })),
-          },
-        },
-      });
-      await audit(tx, ctx, {
-        action: "invoice.issue", entityType: "Invoice", entityId: inv.id,
-        after: { number, kind, grossMinor: totals.gross, lines: entries.length },
-      });
-      return inv;
-    });
+    return await withTenant(db, ctx.tenantId, (tx) => issueInvoiceTx(tx, ctx, folioId, input));
   } catch (e) {
     // The unique index on invoice_lines.folioEntryId stops two concurrent issues from invoicing the same charge.
     if (e instanceof Error && /Unique constraint|P2002|folioEntryId/.test(e.message)) {

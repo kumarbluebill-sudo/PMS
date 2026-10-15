@@ -193,7 +193,9 @@ describe("settle and check out", () => {
     await expect(settleAndCheckOut(app, owner, res.id, {})).rejects.toThrow(/outstanding balance of ₹10080\.00/);
     expect((await admin.reservation.findUniqueOrThrow({ where: { id: res.id } })).status).toBe("CHECKED_IN");
     expect(await admin.invoice.count({ where: { folioId } })).toBe(0);
-    expect((await checkoutOverview(app, owner, res.id)).unpostedNights).toBe(0);
+    // The whole checkout is one transaction, so a refusal leaves nothing behind, not even the posted nights.
+    expect((await checkoutOverview(app, owner, res.id)).unpostedNights).toBe(2);
+    expect(await admin.folioEntry.count({ where: { folioId, category: "ROOM" } })).toBe(0);
   });
 
   it("takes payment, issues the final invoice, checks out, and leaves the room dirty", async () => {
@@ -210,7 +212,11 @@ describe("settle and check out", () => {
     const asg = await admin.roomAssignment.findFirstOrThrow({ where: { reservationId: res.id } });
     expect((await admin.room.findUniqueOrThrow({ where: { id: asg.roomId } })).housekeeping).toBe("DIRTY");
     expect((await folioDetail(app, owner, folioId)).balance).toBe(0);
-    await expect(settleAndCheckOut(app, owner, res.id, {})).rejects.toThrow(/in-house/);
+    // Submitting the same checkout again changes nothing and takes no second payment.
+    const again = await settleAndCheckOut(app, owner, res.id, { payment: { method: "UPI", amountMinor: 1_232_000, reference: "UTR9", idempotencyKey: key() } });
+    expect(again.balanceMinor).toBe(0);
+    expect(await admin.payment.count({ where: { folioId } })).toBe(1);
+    expect(await admin.invoice.count({ where: { folioId } })).toBe(1);
   });
 
   it("the final invoice can be skipped", async () => {

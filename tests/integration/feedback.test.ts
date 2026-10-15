@@ -29,7 +29,7 @@ const addDays = (iso: string, n: number) => new Date(Date.parse(`${iso}T00:00:00
 const asRole = (c: Ctx, role: Ctx["role"], extra: Ctx["extra"] = []): Ctx => ({ ...c, role, extra, userId: randomUUID() });
 let n = 0;
 const book = async (roomTypeId: string, name = `Fiona Feedback ${++n}`) => {
-  const r = await createBooking(app, owner, { newGuest: { name, mobile: `9111${String(100000 + n)}` }, roomTypeId, arrival: today, departure: addDays(today, 1), adults: 1 });
+  const r = await createBooking(app, owner, { newGuest: { name, mobile: `9111${String(100000 + n)}`, allowDuplicate: true }, roomTypeId, arrival: today, departure: addDays(today, 1), adults: 1 });
   return r.reservations[0];
 };
 const checkedIn = async (roomTypeId: string, name?: string) => {

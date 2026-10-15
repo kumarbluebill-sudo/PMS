@@ -17,7 +17,7 @@ async function openShiftFor(tx: Parameters<Parameters<typeof withTenant>[2]>[0],
   return tx.cashShift.findFirst({ where: { propertyId: ctx.propertyId!, openedBy: ctx.userId, status: "OPEN" } });
 }
 
-const paymentSchema = z.object({
+export const paymentSchema = z.object({
   method: z.enum(METHODS),
   amountMinor: z.number().int().positive().max(MAX_AMOUNT_MINOR),
   reference: z.string().trim().max(100).optional(),
@@ -25,20 +25,21 @@ const paymentSchema = z.object({
   idempotencyKey: z.string().min(8).max(100),
 });
 
-/**
- * Records a payment that staff have confirmed they received (cash in hand, a UPI/card slip, a bank credit).
- * Online-gateway payments will be confirmed server-side by webhook in a later phase; they are never trusted from the browser.
- */
-export async function recordPayment(db: PrismaClient, ctx: Ctx, folioId: string, input: unknown) {
+/** Authority checks for a payment. Company credit is a manager decision with the company named. */
+function authorizePayment(ctx: Ctx, d: z.output<typeof paymentSchema>) {
   authorize(ctx, "payments.record");
   requireProperty(ctx);
-  const d = paymentSchema.parse(input);
   if (d.method === "COMPANY_CREDIT") {
-    // Putting a guest's bill on a company's account is a manager decision, with the company named.
     authorize(ctx, "billing.waive");
     if ((d.reference?.length ?? 0) < 2) throw new AppError("VALIDATION", "Name the company or agent that will pay (enter it as the reference).");
   }
-  return withTenant(db, ctx.tenantId, async (tx) => {
+}
+
+/**
+ * Records one payment inside the caller's transaction (used on its own and by the combined checkout). The caller has
+ * already checked authority. A repeat of the same idempotency key returns the original payment instead of a second one.
+ */
+export async function recordPaymentTx(tx: Parameters<Parameters<typeof withTenant>[2]>[0], ctx: Ctx, folioId: string, d: z.output<typeof paymentSchema>) {
     const st = await loadSettings(tx, ctx.tenantId, ctx.propertyId);
     if (!(st["billing.enabledPaymentMethods"] as readonly string[]).includes(d.method)) {
       throw new AppError("VALIDATION", `Payment by ${d.method.replaceAll("_", " ").toLowerCase()} is not in use at this property.`);
@@ -79,7 +80,17 @@ export async function recordPayment(db: PrismaClient, ctx: Ctx, folioId: string,
       after: { method: d.method, amountMinor: d.amountMinor, folioId },
     });
     return { payment, duplicate: false };
-  }).catch(async (e: unknown) => {
+}
+
+/**
+ * Records a payment that staff have confirmed they received (cash in hand, a UPI/card slip, a bank credit).
+ * Online-gateway payments will be confirmed server-side by webhook in a later phase; they are never trusted from the browser.
+ */
+export { authorizePayment };
+export async function recordPayment(db: PrismaClient, ctx: Ctx, folioId: string, input: unknown) {
+  const d = paymentSchema.parse(input);
+  authorizePayment(ctx, d);
+  return withTenant(db, ctx.tenantId, (tx) => recordPaymentTx(tx, ctx, folioId, d)).catch(async (e: unknown) => {
     // Two concurrent deliveries with the same key: the loser hits the unique index; return the winner.
     if (e instanceof Error && /Unique constraint|P2002/.test(e.message)) {
       const again = await db.$transaction(async (tx) => {

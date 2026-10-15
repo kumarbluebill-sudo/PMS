@@ -8,6 +8,7 @@ import { assertTransition, nightsBetween, type ReservationStatus } from "@/serve
 import { audit } from "./audit";
 import { findFreeRooms, toDate } from "./availability";
 import { folioBalance, postRoomNightsTx } from "./billing";
+import { notifyTx } from "./notifications";
 
 
 export async function searchAvailability(
@@ -23,6 +24,37 @@ export async function searchAvailability(
   );
 }
 
+/** The status change itself, inside the caller's transaction, with its history row and audit entry. */
+async function transitionTx(
+  tx: Prisma.TransactionClient,
+  ctx: Ctx,
+  reservationId: string,
+  to: ReservationStatus,
+  extra?: (tx: Prisma.TransactionClient, r: { id: string; propertyId: string }) => Promise<void>,
+  reason?: string,
+  patch: Prisma.ReservationUncheckedUpdateInput = {},
+) {
+  const propertyId = requireProperty(ctx);
+  const r = await tx.reservation.findFirst({ where: { id: reservationId, propertyId } });
+  if (!r) throw new AppError("NOT_FOUND", "Reservation not found.");
+  const from = r.status as ReservationStatus;
+  assertTransition(from, to);
+  await tx.reservation.update({ where: { id: r.id }, data: { status: to, ...patch } });
+  await tx.reservationStatusHistory.create({
+    data: { tenantId: ctx.tenantId, reservationId: r.id, fromStatus: from, toStatus: to, changedBy: ctx.userId, reason: reason?.trim() || null },
+  });
+  if (extra) await extra(tx, r);
+  await audit(tx, ctx, {
+    action: `reservation.${to.toLowerCase()}`,
+    entityType: "Reservation",
+    entityId: r.id,
+    before: { status: from },
+    after: { status: to },
+    reason,
+  });
+  return { id: r.id, status: to };
+}
+
 async function transition(
   db: PrismaClient,
   ctx: Ctx,
@@ -31,27 +63,8 @@ async function transition(
   extra?: (tx: Prisma.TransactionClient, r: { id: string; propertyId: string }) => Promise<void>,
   reason?: string,
 ) {
-  const propertyId = requireProperty(ctx);
-  return withTenant(db, ctx.tenantId, async (tx) => {
-    const r = await tx.reservation.findFirst({ where: { id: reservationId, propertyId } });
-    if (!r) throw new AppError("NOT_FOUND", "Reservation not found.");
-    const from = r.status as ReservationStatus;
-    assertTransition(from, to);
-    await tx.reservation.update({ where: { id: r.id }, data: { status: to } });
-    await tx.reservationStatusHistory.create({
-      data: { tenantId: ctx.tenantId, reservationId: r.id, fromStatus: from, toStatus: to, changedBy: ctx.userId, reason: reason?.trim() || null },
-    });
-    if (extra) await extra(tx, r);
-    await audit(tx, ctx, {
-      action: `reservation.${to.toLowerCase()}`,
-      entityType: "Reservation",
-      entityId: r.id,
-      before: { status: from },
-      after: { status: to },
-      reason,
-    });
-    return { id: r.id, status: to };
-  });
+  requireProperty(ctx);
+  return withTenant(db, ctx.tenantId, (tx) => transitionTx(tx, ctx, reservationId, to, extra, reason));
 }
 
 const releaseRoom = async (tx: Prisma.TransactionClient, r: { id: string }) => {
@@ -105,34 +118,49 @@ export async function checkIn(db: PrismaClient, ctx: Ctx, id: string) {
 }
 
 /**
- * Posts any remaining room-night charges, then refuses to complete the stay while the folio has an outstanding
- * balance. A manager can waive it with a reason (audited).
+ * Completes a stay inside the caller's transaction: posts any remaining room nights, refuses while a balance is
+ * still owed (unless a manager waived it with a reason), records when and by whom the guest left, releases the room,
+ * leaves it Vacant Dirty, creates the departure housekeeping task and notifies housekeeping. Everything here commits
+ * or rolls back together with the caller's other billing steps.
  */
-export async function checkOut(db: PrismaClient, ctx: Ctx, id: string, opts: { waiveReason?: string } = {}) {
-  authorize(ctx, "frontdesk.checkout");
-  return transition(db, ctx, id, "CHECKED_OUT", async (tx, r) => {
-    const { folioId } = await postRoomNightsTx(tx, ctx, r.id);
-    const balance = await folioBalance(tx, folioId);
+export async function checkOutTx(tx: Prisma.TransactionClient, ctx: Ctx, id: string, opts: { waiveReason?: string } = {}) {
+  const departedAt = new Date();
+  return transitionTx(tx, ctx, id, "CHECKED_OUT", async (t, r) => {
+    const { folioId } = await postRoomNightsTx(t, ctx, r.id);
+    const balance = await folioBalance(t, folioId);
     if (balance > 0) {
       if (!opts.waiveReason?.trim()) {
         throw new AppError("CONFLICT", `There is an outstanding balance of ₹${(balance / 100).toFixed(2)}. Collect payment, or ask a manager to waive it.`);
       }
       authorize(ctx, "billing.waive");
-      await audit(tx, ctx, {
+      await audit(t, ctx, {
         action: "checkout.waive_balance", entityType: "Reservation", entityId: r.id,
         after: { balanceMinor: balance }, reason: opts.waiveReason.trim(),
       });
     }
 
-    const a = await tx.roomAssignment.findFirst({ where: { reservationId: r.id, active: true } });
+    const a = await t.roomAssignment.findFirst({ where: { reservationId: r.id, active: true }, include: { room: { select: { number: true, housekeeping: true } } } });
     if (a) {
-      await tx.roomAssignment.update({ where: { id: a.id }, data: { active: false } });
-      await tx.room.update({ where: { id: a.roomId }, data: { housekeeping: "DIRTY" } });
-      await tx.housekeepingTask.create({
-        data: { tenantId: ctx.tenantId, propertyId: r.propertyId, roomId: a.roomId, kind: "DEPARTURE" },
+      await t.roomAssignment.update({ where: { id: a.id }, data: { active: false } });
+      await t.room.update({ where: { id: a.roomId }, data: { housekeeping: "DIRTY", dnd: false, dndAt: null } });
+      await t.roomStatusHistory.create({
+        data: { tenantId: ctx.tenantId, propertyId: r.propertyId, roomId: a.roomId, kind: "HOUSEKEEPING", fromState: a.room.housekeeping, toState: "DIRTY", reason: "Guest checked out", changedBy: ctx.userId },
+      });
+      await t.housekeepingTask.create({
+        data: { tenantId: ctx.tenantId, propertyId: r.propertyId, roomId: a.roomId, kind: "DEPARTURE", reservationId: r.id, updatedBy: ctx.userId },
+      });
+      await notifyTx(t, ctx, {
+        dedupeKey: `checkout:${r.id}`, kind: "ROOM_CHECKED_OUT", title: `Room ${a.room.number} checked out`,
+        body: "The room is Vacant Dirty and needs cleaning.", href: "/app/housekeeping?status=dirty", audiencePerm: "housekeeping.view",
       });
     }
-  });
+  }, undefined, { actualDeparture: departedAt, checkedOutBy: ctx.userId });
+}
+
+export async function checkOut(db: PrismaClient, ctx: Ctx, id: string, opts: { waiveReason?: string } = {}) {
+  authorize(ctx, "frontdesk.checkout");
+  requireProperty(ctx);
+  return withTenant(db, ctx.tenantId, (tx) => checkOutTx(tx, ctx, id, opts));
 }
 
 export async function listReservations(
