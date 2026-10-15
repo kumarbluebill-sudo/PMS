@@ -10,7 +10,7 @@ import { openFolio, postCharge, postDiscount, postRoomNights } from "@/server/se
 import { approveShift, closeShift, openShift, recordPayment, refundPayment } from "@/server/services/payments";
 import { issueCreditNote, issueDebitNote, issueInvoice } from "@/server/services/invoicing";
 import { createCompanyFolio, transferEntries } from "@/server/services/folios";
-import { settleAndCheckOut } from "@/server/services/checkout";
+import { completeCheckout } from "@/server/services/checkout";
 import { approveRule, createRule, deleteDraftRule, retireRule, updateGstSettings } from "@/server/services/tax";
 
 const str = (v: FormDataEntryValue | null) => (typeof v === "string" ? v : "");
@@ -112,16 +112,22 @@ export async function settleCheckoutAction(fd: FormData) {
   let dest: string | null = null;
   let error: string | null = null;
   try {
-    const amt = str(fd.get("amount")).trim();
     const exceptionKind = str(fd.get("exceptionKind"));
     const name = str(fd.get("recipientName")).trim();
-    const r = await settleAndCheckOut(getDb(), ctx, id, {
-      ...(amt ? { payment: { method: str(fd.get("method")), amountMinor: rupeesToMinor(amt), reference: str(fd.get("reference")) || undefined, idempotencyKey: str(fd.get("key")) } } : {}),
+    // Up to three payment lines; a line counts only when it has an amount.
+    const payments = [1, 2, 3].flatMap((i) => {
+      const amt = str(fd.get(`amount_${i}`)).trim();
+      if (!amt) return [];
+      return [{ method: str(fd.get(`method_${i}`)), amountMinor: rupeesToMinor(amt), reference: str(fd.get(`reference_${i}`)) || undefined, idempotencyKey: str(fd.get(`key_${i}`)) }];
+    });
+    const r = await completeCheckout(getDb(), ctx, id, {
+      payments,
       ...(exceptionKind ? { exception: { kind: exceptionKind, reason: str(fd.get("exceptionReason")), company: str(fd.get("company")) || undefined } } : {}),
       issueInvoice: fd.get("issueInvoice") === "on",
       ...(name ? { recipient: { name, gstin: str(fd.get("recipientGstin")) || undefined, address: str(fd.get("recipientAddress")) || undefined } } : {}),
+      confirmed: fd.get("confirmed") === "on",
     });
-    dest = r.invoiceId ? `/app/invoices/${r.invoiceId}` : "/app/dashboard";
+    dest = `${back}/done?${new URLSearchParams({ ...(r.invoiceId ? { inv: r.invoiceId } : {}), ...(r.alreadyCheckedOut ? { dup: "1" } : {}) })}`;
   } catch (e) {
     error = toSafeError(e).message;
   }

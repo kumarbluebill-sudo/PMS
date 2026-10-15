@@ -171,8 +171,11 @@ test("owner registers, enrols MFA, runs a stay end to end, and it is audited", a
   await page.getByRole("link", { name: "Settle & check out" }).first().click();
   await expect(page.getByRole("heading", { name: "Check-out: Asha Verma" })).toBeVisible();
   await expect(page.getByText("Balance due").first()).toBeVisible();
+  await page.getByLabel(/I confirm the guest has left/).check();
   await page.getByRole("button", { name: "Complete check-out" }).click();
-  await expect(page).toHaveURL(/\/app\/dashboard/);
+  await expect(page).toHaveURL(/\/checkout\/done/);
+  await expect(page.getByRole("heading", { name: "Check-out complete" })).toBeVisible();
+  await expect(page.getByText("Housekeeping has been notified.")).toBeVisible();
   await page.goto("/app/front-desk");
   await expect(page.getByText("In house (0)")).toBeVisible();
 
