@@ -36,6 +36,7 @@ export default async function GstSummaryPage({ searchParams }: PageProps<"/app/i
         <button className={btn}>Show</button>
         <a className={btnGhost} href={`/app/invoices/gst-summary/export?${qs}&kind=summary`}>Download summary CSV</a>
         <a className={btnGhost} href={`/app/invoices/gst-summary/export?${qs}&kind=register`}>Download invoice register CSV</a>
+        <a className={btnGhost} href={`/app/invoices/gst-summary/export?${qs}&format=xlsx`}>Download Excel workbook</a>
       </form>
       {data && (
         <>

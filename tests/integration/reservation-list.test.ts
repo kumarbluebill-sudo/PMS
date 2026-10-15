@@ -7,6 +7,7 @@ import { registerTenant } from "@/server/services/tenant";
 import { createRoom, createRoomType } from "@/server/services/rooms";
 import { createGuest } from "@/server/services/guests";
 import { cancelReservation, createReservation, listReservationsPage, reservationTimeline, RESERVATION_PAGE_SIZE } from "@/server/services/reservations";
+import { searchAuditLogs } from "@/server/services/audit";
 import { moveRoom, rack } from "@/server/services/stays";
 import { propertyToday, reportIssue } from "@/server/services/roomBlocks";
 
@@ -109,5 +110,19 @@ describe("room rack", () => {
     const vacant = await rack(app, owner, { start: today, days: 14, show: "vacant" });
     expect(vacant.rooms.some((r) => r.id === room)).toBe(false);
     expect((await rack(app, other, { start: today, days: 14 })).rooms).toHaveLength(0);
+  });
+});
+
+describe("audit search", () => {
+  it("filters by record and action, names the actor, and stays inside the tenant", async () => {
+    const id = await book("Audited", 20, 21);
+    const r = await searchAuditLogs(app, owner, { entityId: id });
+    expect(r.rows.length).toBeGreaterThan(0);
+    expect(r.rows.every((x) => x.entityId === id && x.actor === "Owner")).toBe(true);
+    expect((await searchAuditLogs(app, owner, { action: "reservation.create", entityType: "Reservation" })).total).toBeGreaterThan(0);
+    expect((await searchAuditLogs(app, owner, { action: "no-such-action" })).total).toBe(0);
+    expect((await searchAuditLogs(app, other, { entityId: id })).total).toBe(0);
+    const future = await searchAuditLogs(app, owner, { from: "2999-01-01" });
+    expect(future.total).toBe(0);
   });
 });

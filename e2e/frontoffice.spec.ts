@@ -54,6 +54,22 @@ test("front office: arrival to check-in to checkout control, with command centre
   await expect(page.getByRole("heading", { name: "Booking confirmation" })).toBeVisible();
   const id = /reservations\/([0-9a-f-]{36})\/confirmation/.exec(page.url())![1];
 
+  // Reservation list: money columns, search and filters; calendar: the stay shows as a bar.
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/app/reservations");
+  await expect(page.getByRole("link", { name: /^R-|^[A-Z]{2,}-/ }).first()).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "Balance" })).toBeVisible();
+  await page.getByLabel("Search", { exact: true }).fill("Asha");
+  await page.getByRole("button", { name: "Apply" }).click();
+  await expect(page.getByRole("heading", { name: "Reservations (1)" })).toBeVisible();
+  await page.getByLabel("Search", { exact: true }).fill("zzzz-none");
+  await page.getByRole("button", { name: "Apply" }).click();
+  await expect(page.getByText("No reservations match these filters")).toBeVisible();
+  await shot(page, "reservation-list");
+  await page.goto("/app/reservations/calendar");
+  await expect(page.getByRole("link", { name: /Asha Verma, Confirmed/ })).toBeVisible();
+  await shot(page, "room-calendar");
+
   // Today's operations lists the arrival and links to the check-in screen.
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/app/operations");

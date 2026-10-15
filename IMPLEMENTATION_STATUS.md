@@ -113,3 +113,26 @@ Verified by Vitest (267 tests, 30 files, including `tests/integration/frontoffic
 - Early check-in and late checkout are recorded and shown; no fee is charged automatically. There is no separate Front Office Manager role; the manager view follows permissions.
 - ID photo upload and signature capture are not built. Notifications refresh on a timer (`frontoffice.dashboardRefreshSeconds`, default off) or on demand, not by push.
 - New settings (Settings > Reservations): `frontoffice.noShowCutoffTime`, `frontoffice.requireIdAtCheckin`, `frontoffice.dashboardRefreshSeconds`.
+
+## Professional Front Desk Upgrade (2026-10-16)
+Verified by Vitest (282 tests, 34 files) and Playwright (8 tests, including the reservation list, calendar bar and the new settings page in the axe and 390/768 px scans). Migration `20261016100000_reservation_ref` (additive: `reservations.externalRef`, `reservation_status_history.reason`).
+
+| Area | Status | Notes |
+|---|---|---|
+| Reservation list | Done | Phone/email, nights, guests, room type and room, source, status, total, paid, balance, creator and date; search, sort, 25 per page; filters for arrival and departure range, status, category, source, room, payment status. Money is hidden without `billing.view` |
+| New reservation page | Done | Moved to `/app/reservations/new` (dates, price, guest and booking); OTA or channel reference field added |
+| Change history | Done | Detail page timeline: status moves, room, dates, requests, payments, refunds, discounts, with who and why. Cancel now asks for a reason |
+| Room calendar | Done | Bars across nights, sticky date row and room column, today highlight, 1/2-week and 30-day ranges, jump to date, building, floor, category, vacancy and guest or room search, blocks shown hatched, overlap with a block flagged, same-day turnover marked, empty cell opens a booking for that room |
+| Folio ledger | Done | Qty, rate, discount, taxable value, GST split (CGST/SGST/IGST/cess), payment method and reference, receipt link; folio statement PDF |
+| Invoice themes | Done | Classic, Luxury, Modern, Resort, Compact; accent colour and typeface; live sample under Settings > Invoice design; saved in the billing settings. Themes change colour and type only (a test checks the totals and GSTIN are drawn identically in every theme) |
+| GST | Done | Excel workbook export next to the CSVs (SAC-wise summary and invoice register) |
+| Audit log | Done | Filters (action, record type, dates, record id), who acted, before and after, paging |
+| Checkout | Done | A balance exception (company credit or approved unpaid) now needs `billing.waive` before any charge is posted or invoice issued |
+
+### Limits (honest list)
+- The booking form keeps its three on-page steps rather than a separate four-step wizard. Extra-person pricing (`RoomType.extraAdultRateMinor`) is still not used in the quote, and there is no approval queue for large discounts: a cap and the `billing.discount` permission remain the control.
+- No drag-and-drop on the calendar. Moving a room or extending a stay is done from the reservation page with a reason. No waitlist.
+- Calendar bars are whole nights (no half-day arrival and departure slots). Cancelled stays do not show.
+- Advance receipts already existed as payment receipts taken before arrival. There is no separate cancellation document; a credit note covers invoiced corrections.
+- Logo upload (needs file storage), a Unicode PDF font (the rupee sign prints as "Rs."), receipt printer themes beyond the 80 mm layout, and night audit are still open.
+- GST treatment and rates must be reviewed by a qualified tax professional.

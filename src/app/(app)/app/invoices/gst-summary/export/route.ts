@@ -1,3 +1,4 @@
+import ExcelJS from "exceljs";
 import { NextResponse, type NextRequest } from "next/server";
 import { csvHeaders, toCsv } from "@/server/csv";
 import { getDb } from "@/server/db/client";
@@ -20,6 +21,30 @@ export async function GET(req: NextRequest) {
   } catch (e) {
     const forbidden = e instanceof Error && e.name === "ForbiddenError";
     return new NextResponse(forbidden ? "Forbidden" : "Could not build the export", { status: forbidden ? 403 : 400 });
+  }
+  if (p.get("format") === "xlsx") {
+    const wb = new ExcelJS.Workbook();
+    const inr = (n: number) => n / 100;
+    const sum = wb.addWorksheet("SAC-wise summary");
+    sum.addRow(["SAC", "Rate %", "Cess %", "Treatment", "Taxable (INR)", "CGST (INR)", "SGST (INR)", "IGST (INR)", "Cess (INR)", "Total (INR)", "Lines"]);
+    for (const r of data.rows) sum.addRow([r.sacCode, r.rateBp / 100, r.cessBp / 100, r.treatment, inr(r.taxableMinor), inr(r.cgstMinor), inr(r.sgstMinor), inr(r.igstMinor), inr(r.cessMinor), inr(r.grossMinor), r.lines]);
+    const reg = wb.addWorksheet("Invoice register");
+    reg.addRow(["Number", "Date", "Type", "Original document", "Recipient", "Recipient GSTIN", "Place of supply", "Taxable (INR)", "CGST (INR)", "SGST (INR)", "IGST (INR)", "Cess (INR)", "Total (INR)"]);
+    for (const r of data.register) reg.addRow([r.number, r.date, r.kind, r.originalNumber, r.recipient, r.recipientGstin, r.placeOfSupply, inr(r.taxableMinor), inr(r.cgstMinor), inr(r.sgstMinor), inr(r.igstMinor), inr(r.cessMinor), inr(r.grossMinor)]);
+    for (const ws of [sum, reg]) {
+      ws.getRow(1).font = { bold: true };
+      ws.views = [{ state: "frozen", ySplit: 1 }];
+      ws.columns.forEach((c) => { c.width = 16; });
+      ws.eachRow((row, i) => { if (i > 1) row.eachCell((cell) => { if (typeof cell.value === "number") cell.numFmt = "#,##0.00"; }); });
+    }
+    const buf = await wb.xlsx.writeBuffer();
+    return new NextResponse(Buffer.from(buf), {
+      headers: {
+        "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "content-disposition": `attachment; filename="gst-${from}-to-${to}.xlsx"`,
+        "cache-control": "private, no-store",
+      },
+    });
   }
   const body =
     p.get("kind") === "register"

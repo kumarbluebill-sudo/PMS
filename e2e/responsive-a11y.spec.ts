@@ -10,7 +10,7 @@ const PAGES = [
   "/app/dashboard", "/app/front-desk", "/app/reservations", "/app/reservations/new", "/app/reservations/calendar", "/app/guests", "/app/billing",
   "/app/invoices", "/app/credit-notes", "/app/payments", "/app/cashier", "/app/accounting", "/app/invoices/gst-summary",
   "/app/rooms", "/app/room-types", "/app/housekeeping", "/app/maintenance", "/app/feedback", "/app/users", "/app/audit-logs",
-  "/app/settings/general", "/app/settings/property", "/app/settings/reservations", "/app/settings/rooms", "/app/settings/billing",
+  "/app/settings/general", "/app/settings/property", "/app/settings/reservations", "/app/settings/rooms", "/app/settings/billing", "/app/settings/invoice-design",
   "/app/settings/tax", "/app/settings/security", "/app/settings/notifications", "/app/settings/channels", "/app/settings/reports",
   "/app/settings/backup", "/app/settings/subscription", "/app/settings/system", "/app/settings/permissions", "/app/structure",
   "/app/rooms/plan", "/app/rooms/import", "/app/messages", "/onboarding",

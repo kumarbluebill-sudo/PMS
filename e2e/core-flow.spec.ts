@@ -103,8 +103,9 @@ test("owner registers, enrols MFA, runs a stay end to end, and it is audited", a
   await expect(page.getByRole("heading", { name: "Booking confirmation" })).toBeVisible();
   await expect(page.getByText(/MK-[0-9A-F]{8}/).first()).toBeVisible();
   await expect(page.getByText("Estimated total")).toBeVisible();
-  await page.goto("/app/reservations/new");
+  await page.goto("/app/reservations");
   await expect(page.getByRole("cell", { name: "Asha Verma" })).toBeVisible();
+  await page.goto("/app/reservations/new");
 
   // A second booking for the only room on overlapping dates is shown as unavailable before it can be saved.
   await page.getByLabel("Check-in").fill(plus(arrival, 1));
@@ -177,7 +178,7 @@ test("owner registers, enrols MFA, runs a stay end to end, and it is audited", a
   await expect(page.getByText("dirty").first()).toBeVisible();
 
   // Guest feedback: staff create a private link, the guest answers without logging in, the link works once.
-  await page.goto("/app/reservations/new");
+  await page.goto("/app/reservations");
   await page.getByRole("link", { name: /MK-[0-9A-F]{8}/ }).first().click();
   await page.getByRole("button", { name: "Create feedback link" }).click();
   const feedbackUrl = await page.getByLabel(/Send this link to the guest/).inputValue();
