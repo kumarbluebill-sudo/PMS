@@ -103,27 +103,43 @@ export default async function FolioPage({ params, searchParams }: PageProps<"/ap
         )}
       </div>
 
-      <Card title="Ledger">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="text-xs text-slate-500">
-              <tr><th className="py-1">Date</th><th>Description</th><th>Kind</th><th className="text-right">Net</th><th className="text-right">GST</th><th className="text-right">Effect</th><th>Document</th></tr>
+      <Card title="Itemised ledger">
+        <div className="relative overflow-x-auto" tabIndex={0} role="region" aria-label="Folio ledger, scrolls sideways">
+          <table className="w-full min-w-[56rem] text-left text-sm">
+            <thead className="text-xs text-slate-600">
+              <tr>
+                <th scope="col" className="py-1 pr-2">Date</th><th scope="col" className="pr-2">Description</th><th scope="col" className="pr-2">Ref</th>
+                <th scope="col" className="pr-2 text-right">Qty</th><th scope="col" className="pr-2 text-right">Rate</th><th scope="col" className="pr-2 text-right">Discount</th>
+                <th scope="col" className="pr-2 text-right">Taxable</th><th scope="col" className="pr-2 text-right">GST</th><th scope="col" className="pr-2 text-right">Line total</th>
+                <th scope="col">Payment / document</th>
+              </tr>
             </thead>
             <tbody className="divide-y">
-              {f.entries.map((e) => (
-                <tr key={e.id}>
-                  <td className="py-2 whitespace-nowrap">{fmtDate(e.postedAt)}</td>
-                  <td>{e.description}{e.reason && <span className="block text-xs text-slate-500">{e.reason}</span>}</td>
-                  <td className="text-xs">{e.kind.toLowerCase()}</td>
-                  <td className="text-right font-mono">{e.netMinor ? formatInr(e.netMinor) : ""}</td>
-                  <td className="text-right font-mono">{e.taxMinor ? formatInr(e.taxMinor) : ""}</td>
-                  <td className="text-right font-mono">{formatInr(e.balanceDeltaMinor)}</td>
-                  <td className="text-xs">
-                    {e.line?.invoice.number ?? ""}
-                    {e.paymentId && <Link className="underline" href={`/app/payments/${e.paymentId}/receipt`}>Receipt</Link>}
-                  </td>
-                </tr>
-              ))}
+              {f.entries.map((e) => {
+                const t = e.taxDetail as { rateBp?: number; cgstMinor?: number; sgstMinor?: number; igstMinor?: number; cessMinor?: number } | null;
+                const charge = e.kind === "CHARGE";
+                const parts = t ? [["CGST", t.cgstMinor], ["SGST", t.sgstMinor], ["IGST", t.igstMinor], ["Cess", t.cessMinor]].filter(([, v]) => v) as [string, number][] : [];
+                return (
+                  <tr key={e.id} className="align-top">
+                    <td className="whitespace-nowrap py-2 pr-2">{fmtDate(e.serviceDate ?? e.postedAt)}</td>
+                    <td className="pr-2">{e.description}<span className="block text-xs text-slate-600">{e.kind.toLowerCase()}{e.category !== "ROOM" && e.kind === "CHARGE" ? ` · ${(CATEGORY_LABEL[e.category] ?? e.category).toLowerCase()}` : ""}{e.reason ? ` · ${e.reason}` : ""}</span></td>
+                    <td className="pr-2 text-xs">{e.category === "ROOM" ? f.reservation.reference : ""}</td>
+                    <td className="pr-2 text-right tabular-nums">{charge ? e.quantity : ""}</td>
+                    <td className="pr-2 text-right font-mono">{charge && e.netMinor ? formatInr(Math.round(e.netMinor / Math.max(1, e.quantity))) : ""}</td>
+                    <td className="pr-2 text-right font-mono">{e.kind === "DISCOUNT" ? formatInr(Math.abs(e.netMinor || e.balanceDeltaMinor)) : ""}</td>
+                    <td className="pr-2 text-right font-mono">{e.netMinor ? formatInr(e.netMinor) : ""}</td>
+                    <td className="pr-2 text-right font-mono">{e.taxMinor ? formatInr(e.taxMinor) : ""}
+                      {parts.length > 0 && <span className="block text-xs text-slate-600">{t?.rateBp ? `${(t.rateBp / 100).toFixed(t.rateBp % 100 ? 2 : 0)}%: ` : ""}{parts.map(([n, v]) => `${n} ${formatInr(v)}`).join(", ")}</span>}</td>
+                    <td className="pr-2 text-right font-mono">{formatInr(e.balanceDeltaMinor)}</td>
+                    <td className="text-xs">
+                      {e.paymentId && <span className="block">{d.paymentRefs.get(e.paymentId) ?? "payment"}</span>}
+                      {e.line?.invoice.number ?? ""}
+                      {e.paymentId && <> <Link className="underline" href={`/app/payments/${e.paymentId}/receipt`}>Receipt</Link></>}
+                    </td>
+                  </tr>
+                );
+              })}
+              {f.entries.length === 0 && <tr><td colSpan={10} className="py-3 text-slate-600">Nothing posted yet. Room nights post at checkout; post other charges below.</td></tr>}
             </tbody>
           </table>
         </div>

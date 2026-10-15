@@ -59,6 +59,8 @@ export async function settleAndCheckOut(db: PrismaClient, ctx: Ctx, reservationI
   authorize(ctx, "frontdesk.checkout");
   const propertyId = requireProperty(ctx);
   const d = inputSchema.parse(input);
+  // An exception is a manager decision: refuse it before any charge is posted or invoice issued.
+  if (d.exception) authorize(ctx, "billing.waive");
 
   const res = await withTenant(db, ctx.tenantId, async (tx) => {
     const r = await tx.reservation.findFirst({ where: { id: reservationId, propertyId } });

@@ -374,7 +374,10 @@ export async function folioDetail(db: PrismaClient, ctx: Ctx, folioId: string) {
     const siblings = await tx.folio.findMany({
       where: { reservationId: folio.reservationId, id: { not: folio.id } }, select: { id: true, label: true, billTo: true },
     });
-    return { folio, balance, paid, refunded, billed, paymentStatus, summary, siblings };
+    const payIds = folio.entries.map((e) => e.paymentId).filter((x): x is string => !!x);
+    const pays = payIds.length ? await tx.payment.findMany({ where: { id: { in: payIds } }, select: { id: true, method: true, reference: true } }) : [];
+    const paymentRefs = new Map(pays.map((x) => [x.id, `${x.method.replace("_", " ").toLowerCase()}${x.reference ? ` · ${x.reference}` : ""}`]));
+    return { folio, balance, paid, refunded, billed, paymentStatus, summary, siblings, paymentRefs };
   });
 }
 
