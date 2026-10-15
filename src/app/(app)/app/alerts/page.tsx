@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { alertStateAction } from "@/app/frontoffice-actions";
+import { markNotificationsReadAction } from "@/app/notification-actions";
+import { listNotifications } from "@/server/services/notifications";
 import { btnGhost, Card, EmptyState, ErrorBanner, input, Notice, PageHeader } from "@/app/ui";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { roleHasPermission } from "@/server/auth/permissions";
@@ -55,7 +57,8 @@ export default async function AlertsPage({ searchParams }: PageProps<"/app/alert
   const sp = await searchParams;
   const ctx = await getCtx();
   const showResolved = sp.resolved === "1";
-  const alerts = await listAlerts(getDb(), ctx, { includeResolved: showResolved });
+  const [alerts, notes] = await Promise.all([listAlerts(getDb(), ctx, { includeResolved: showResolved }), listNotifications(getDb(), ctx, { limit: 20 })]);
+  const unread = notes.filter((n) => !n.read);
   const canAct = roleHasPermission(ctx.role, "reservations.modify", ctx.extra);
   const manager = isManagerView(ctx);
   const activity = manager ? await staffActivity(getDb(), ctx) : [];
@@ -66,6 +69,23 @@ export default async function AlertsPage({ searchParams }: PageProps<"/app/alert
       <PageHeader title="Alerts and tasks" subtitle="Worked out from live data. Acknowledging or resolving is recorded in the audit log." actions={<Link className={btnGhost} href={showResolved ? "/app/alerts" : "/app/alerts?resolved=1"}>{showResolved ? "Hide resolved" : "Show resolved"}</Link>} />
       <ErrorBanner message={typeof sp.error === "string" ? sp.error : undefined} />
       {typeof sp.ok === "string" && <Notice tone="success">{sp.ok}</Notice>}
+      {notes.length > 0 && (
+        <section aria-label="Notifications" className="mb-5">
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-slate-900">Notifications <span className="font-normal text-slate-700">({unread.length} unread)</span></h2>
+            {unread.length > 0 && <form action={markNotificationsReadAction}><button className={btnGhost}>Mark all as read</button></form>}
+          </div>
+          <ul className="space-y-1.5">
+            {notes.map((n) => (
+              <li key={n.id} className={`rounded-lg border p-2.5 text-sm ${n.read ? "border-slate-200 bg-white text-slate-700" : "border-brand-300 bg-brand-50 text-slate-900"}`}>
+                <p className="font-medium">{n.read ? "" : <span className="mr-1 rounded bg-brand-700 px-1 text-[11px] text-white">New</span>}{n.title}</p>
+                {n.body && <p className="text-xs">{n.body}</p>}
+                <p className="mt-0.5 flex flex-wrap items-center gap-3 text-xs text-slate-700">{n.createdAt.toISOString().slice(0, 16).replace("T", " ")} UTC{n.href && <Link className="underline" href={n.href}>Open</Link>}</p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       {alerts.length === 0 && <EmptyState title="No alerts right now">Overdue checkouts, rooms without allocation, unpaid balances and other issues appear here.</EmptyState>}
       <div className="space-y-5">
         {groups.filter((g) => g.rows.length > 0).map((g) => (

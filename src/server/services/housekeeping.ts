@@ -4,6 +4,7 @@ import { authorize, requireProperty, type Ctx } from "@/server/auth/context";
 import { withTenant } from "@/server/db/withTenant";
 import { AppError } from "@/server/errors";
 import { audit } from "./audit";
+import { loadSettings } from "./settings";
 
 const HK = ["DIRTY", "CLEANING", "CLEAN", "INSPECTED"] as const;
 
@@ -20,11 +21,17 @@ export async function setRoomStatus(db: PrismaClient, ctx: Ctx, roomId: string, 
     await tx.roomStatusHistory.create({
       data: { tenantId: ctx.tenantId, propertyId, roomId: room.id, kind: "HOUSEKEEPING", fromState: room.housekeeping, toState: status, changedBy: ctx.userId },
     });
-    if (status === "CLEAN" || status === "INSPECTED") {
-      await tx.housekeepingTask.updateMany({
-        where: { roomId: room.id, status: { in: ["PENDING", "IN_PROGRESS"] } },
-        data: { status: "DONE", doneAt: new Date() },
-      });
+    // Keep the room's open cleaning tasks in step, following the hotel's inspection policy.
+    const inspect = (await loadSettings(tx, ctx.tenantId, propertyId))["housekeeping.inspectionRequired"];
+    const bump = { version: { increment: 1 }, updatedBy: ctx.userId, updatedAt: new Date() };
+    if (status === "CLEANING") {
+      await tx.housekeepingTask.updateMany({ where: { roomId: room.id, status: "PENDING" }, data: { status: "IN_PROGRESS", startedAt: new Date(), ...bump } });
+    } else if (status === "CLEAN") {
+      await tx.housekeepingTask.updateMany({ where: { roomId: room.id, status: { in: ["PENDING", "IN_PROGRESS"] } }, data: inspect ? { status: "AWAITING_INSPECTION", inspectionRequestedAt: new Date(), ...bump } : { status: "DONE", doneAt: new Date(), ...bump } });
+    } else if (status === "INSPECTED") {
+      await tx.housekeepingTask.updateMany({ where: { roomId: room.id, status: { in: ["PENDING", "IN_PROGRESS", "AWAITING_INSPECTION"] } }, data: { status: "INSPECTED", doneAt: new Date(), inspectionResult: "PASSED", inspectedBy: ctx.userId, inspectedAt: new Date(), ...bump } });
+    } else if (status === "DIRTY") {
+      await tx.housekeepingTask.updateMany({ where: { roomId: room.id, status: { in: ["IN_PROGRESS", "AWAITING_INSPECTION"] } }, data: { status: "PENDING", ...bump } });
     }
     await audit(tx, ctx, {
       action: "room.housekeeping",

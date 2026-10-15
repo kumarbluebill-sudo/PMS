@@ -9,6 +9,8 @@ import { isNoShowCandidate, timeInZone } from "@/server/domain/kpi";
 import { blockCoversDate } from "@/server/domain/roomBlock";
 import { dateInZone } from "@/server/domain/roomStatus";
 import { audit } from "./audit";
+import { housekeepingBoard } from "./housekeepingTasks";
+import { roomReady, type CleanState } from "@/server/domain/housekeeping";
 import { findFreeRooms, toDate } from "./availability";
 import { folioBalance } from "./billing";
 import { ID_TYPES } from "./booking";
@@ -128,7 +130,7 @@ export async function operations(db: PrismaClient, ctx: Ctx, input: { date?: str
     const row = (r: (typeof live)[number]): OpsRow => ({
       id: r.id, reference: r.reference, guest: r.guest.name, status: r.status,
       source: r.source, room: r.assignments[0]?.room.number ?? null,
-      roomReady: r.assignments[0] ? !r.assignments[0].room.outOfOrder && ["CLEAN", "INSPECTED"].includes(r.assignments[0].room.housekeeping) : null,
+      roomReady: r.assignments[0] ? roomReady({ occupied: false, clean: r.assignments[0].room.housekeeping as CleanState, outOfOrder: r.assignments[0].room.outOfOrder || !!blockedRoom(r.assignments[0].roomId, today), outOfService: false }, !!settings["housekeeping.inspectionRequired"]) : null,
       arrival: iso(r.arrival), departure: iso(r.departure),
       adults: r.adults, children: r.children, vip: r.vip, notes: r.notes, etaTime: r.etaTime,
       earlyCheckinRequest: r.earlyCheckinRequest, lateCheckoutRequest: r.lateCheckoutRequest,
@@ -379,6 +381,7 @@ export async function checkInContext(db: PrismaClient, ctx: Ctx, reservationId: 
       room: room ? { id: room.id, number: room.number, type: room.roomType.name, housekeeping: room.housekeeping, outOfOrder: room.outOfOrder } : null,
       issues: registrationIssues(r.guest, r),
       requireId: !!settings["frontoffice.requireIdAtCheckin"],
+      inspectionRequired: !!settings["housekeeping.inspectionRequired"],
       arrivalIsFuture: iso(r.arrival) > today,
       today,
       freeRooms: free,
@@ -435,7 +438,10 @@ export async function housekeepingSummary(db: PrismaClient, ctx: Ctx) {
       tx.maintenanceRequest.findMany({ where: { propertyId, status: { not: "RESOLVED" } }, include: { room: { select: { number: true } } }, orderBy: { createdAt: "asc" } }),
     ]);
     const by = (k: string) => rooms.filter((r) => !r.outOfOrder && r.housekeeping === k).length;
+    // The full picture (derived status codes, inspection policy, arrivals, overdue tasks) when the viewer may see housekeeping.
+    const board = roleHasPermission(ctx.role, "housekeeping.view", ctx.extra) ? (await housekeepingBoard(db, ctx)).summary : null;
     return {
+      board,
       needsCleaning: by("DIRTY"), beingCleaned: by("CLEANING"), awaitingInspection: by("CLEAN"), inspectedReady: by("INSPECTED"),
       openTasks: tasks,
       openMaintenance: requests.length,

@@ -281,11 +281,19 @@ export default async function Dashboard({ searchParams }: PageProps<"/app/dashbo
       </Card>
 
       <Card title="Housekeeping and maintenance">
-        <dl className="grid grid-cols-2 gap-2 text-center text-xs text-slate-600">
-          {([["Needs cleaning", hk.needsCleaning], ["Being cleaned", hk.beingCleaned], ["Clean, not inspected", hk.awaitingInspection], ["Inspected, ready", hk.inspectedReady]] as const).map(([l, v]) => (
-            <div key={l} className="rounded-md bg-slate-50 p-2"><dd className="text-lg font-semibold tabular-nums text-slate-900">{v}</dd><dt>{l}</dt></div>
-          ))}
-        </dl>
+        {hk.board ? (
+          <ul aria-label="Housekeeping summary" className="grid grid-cols-2 gap-2 text-center text-xs text-slate-700">
+            {([["Awaiting cleaning", hk.board.awaitingCleaning, "awaiting-cleaning"], ["Being cleaned", hk.board.beingCleaned, "cleaning"], ["Awaiting inspection", hk.board.awaitingInspection, "awaiting-inspection"], ["Clean and ready", hk.board.ready, "ready"], ["Arrivals, room not ready", hk.board.arrivalsNotReady, "arrivals-not-ready"], ["Overdue tasks", hk.board.overdue, "overdue"]] as const).map(([l, v, st]) => (
+              <li key={l}><Link href={`/app/housekeeping?state=${st}`} className={`block rounded-md bg-slate-50 p-2 hover:bg-brand-50 ${v > 0 && (st === "arrivals-not-ready" || st === "overdue") ? "border-l-4 border-red-700" : ""}`}><span className="block text-lg font-semibold tabular-nums text-slate-900">{v}</span><span>{l}</span></Link></li>
+            ))}
+          </ul>
+        ) : (
+          <dl className="grid grid-cols-2 gap-2 text-center text-xs text-slate-600">
+            {([["Needs cleaning", hk.needsCleaning], ["Being cleaned", hk.beingCleaned], ["Clean, not inspected", hk.awaitingInspection], ["Inspected, ready", hk.inspectedReady]] as const).map(([l, v]) => (
+              <div key={l} className="rounded-md bg-slate-50 p-2"><dd className="text-lg font-semibold tabular-nums text-slate-900">{v}</dd><dt>{l}</dt></div>
+            ))}
+          </dl>
+        )}
         <ul className="mt-3 space-y-1 text-xs text-slate-700">
           <li>Open housekeeping tasks: <strong>{hk.openTasks}</strong></li>
           <li>Open maintenance requests: <strong>{hk.openMaintenance}</strong> ({hk.blockedRooms} blocking a room)</li>

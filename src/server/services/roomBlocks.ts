@@ -7,6 +7,7 @@ import { AppError } from "@/server/errors";
 import { dateInZone } from "@/server/domain/roomStatus";
 import { blockOverlapsStay, ISSUE_CATEGORIES, ISSUE_MODES, ISSUE_PRIORITIES } from "@/server/domain/roomBlock";
 import { audit } from "./audit";
+import { notifyTx } from "./notifications";
 import { loadSettings } from "./settings";
 
 type Tx = Prisma.TransactionClient;
@@ -66,7 +67,8 @@ export async function listAssignableStaff(db: PrismaClient, ctx: Ctx) {
  */
 export async function reportIssue(db: PrismaClient, ctx: Ctx, input: unknown) {
   const d = reportSchema.parse(input);
-  if (d.mode === "REPORT") authorize(ctx, "maintenance.manage");
+  // Anyone who may report a maintenance issue can raise a plain report; blocking a room needs block authority.
+  if (d.mode === "REPORT") { if (!roleHasPermission(ctx.role, "maintenance.report", ctx.extra)) authorize(ctx, "maintenance.manage"); }
   else authorize(ctx, "rooms.block");
   const propertyId = requireProperty(ctx);
   if (d.category === "OTHER" && (d.description?.length ?? 0) < 10) {
@@ -142,6 +144,10 @@ export async function reportIssue(db: PrismaClient, ctx: Ctx, input: unknown) {
       entityType: "MaintenanceRequest", entityId: m.id,
       after: { room: room.number, mode: d.mode, category: d.category, priority: d.priority, start, expected: d.expectedResolution ?? null, approvalRequired, overlappingBookings: conflictRefs },
       reason: d.title,
+    });
+    await notifyTx(tx, ctx, {
+      dedupeKey: `maint:${m.id}`, kind: blocks ? "ROOM_BLOCKED" : "MAINTENANCE_REPORTED", title: `Room ${room.number}: ${d.title}`,
+      body: blocks ? "The room has been taken out of sale." : "Reported for maintenance.", href: "/app/maintenance", audiencePerm: "maintenance.manage",
     });
     return m;
   });

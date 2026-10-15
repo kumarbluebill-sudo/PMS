@@ -9,6 +9,8 @@ import { audit } from "./audit";
 import { findFreeRooms, toDate } from "./availability";
 import { folioBalance, postRoomNightsTx } from "./billing";
 import { checklistTx } from "./confirmation";
+import { loadSettings } from "./settings";
+import { roomReady, type CleanState } from "@/server/domain/housekeeping";
 import { notifyTx } from "./notifications";
 
 
@@ -118,8 +120,10 @@ export async function checkIn(db: PrismaClient, ctx: Ctx, id: string) {
       ),
     );
     if (live) throw new AppError("CONFLICT", `Room ${a.room.number} is blocked for maintenance: ${live.title}.`);
-    if (a.room.housekeeping !== "CLEAN" && a.room.housekeeping !== "INSPECTED") {
-      throw new AppError("CONFLICT", `Room ${a.room.number} is not ready (${a.room.housekeeping.toLowerCase()}).`);
+    // Ready means clean, and inspected too when the hotel requires inspection. Never an occupied room.
+    const inspect = (await loadSettings(tx, ctx.tenantId, r.propertyId))["housekeeping.inspectionRequired"];
+    if (!roomReady({ occupied: false, clean: a.room.housekeeping as CleanState, outOfOrder: false, outOfService: false }, inspect)) {
+      throw new AppError("CONFLICT", a.room.housekeeping === "CLEAN" && inspect ? `Room ${a.room.number} is clean but has not been inspected yet.` : `Room ${a.room.number} is not ready (${a.room.housekeeping.toLowerCase()}).`);
     }
   });
 }

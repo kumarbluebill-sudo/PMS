@@ -5,6 +5,7 @@ import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { roleHasPermission } from "@/server/auth/permissions";
 import { getDb } from "@/server/db/client";
 import { SOURCE_LABELS } from "@/server/domain/quote";
+import { roomReady as isReady, type CleanState } from "@/server/domain/housekeeping";
 import { checkInContext } from "@/server/services/frontoffice";
 import { getCtx } from "@/server/session";
 
@@ -32,7 +33,7 @@ export default async function CheckInPage({ params, searchParams }: PageProps<"/
   const r = c.reservation;
   const live = r.status === "CONFIRMED";
   const hasRoom = !!c.room;
-  const roomReady = !!c.room && !c.room.outOfOrder && ["CLEAN", "INSPECTED"].includes(c.room.housekeeping);
+  const roomReady = !!c.room && isReady({ occupied: false, clean: c.room.housekeeping as CleanState, outOfOrder: c.room.outOfOrder, outOfService: false }, c.inspectionRequired);
   const blockers: string[] = [];
   if (!live) blockers.push(r.status === "CHECKED_IN" ? "This guest is already checked in." : `This reservation is ${r.status.replaceAll("_", " ").toLowerCase()}.`);
   if (live && c.arrivalIsFuture) blockers.push(`Arrival is on ${r.arrival}; check-in opens on the arrival date.`);
@@ -108,7 +109,7 @@ export default async function CheckInPage({ params, searchParams }: PageProps<"/
           <Card title="Check-in checklist">
             <ul className="space-y-2.5">
               <Check ok={hasRoom} label="Room allocated" hint={c.room ? `Room ${c.room.number}` : "No room yet"} />
-              <Check ok={!hasRoom || roomReady} label="Room ready" hint={c.room ? (roomReady ? "Clean and available" : c.room.outOfOrder ? "Out of order" : `Housekeeping: ${c.room.housekeeping.toLowerCase()}`) : "Needs a room first"} />
+              <Check ok={!hasRoom || roomReady} label="Room ready" hint={c.room ? (roomReady ? (c.room.housekeeping === "INSPECTED" ? "Clean and inspected" : "Clean and available") : c.room.outOfOrder ? "Out of order" : c.room.housekeeping === "CLEAN" && c.inspectionRequired ? "Clean, waiting for inspection" : `Housekeeping: ${c.room.housekeeping.toLowerCase()}`) : "Needs a room first"} />
               <Check ok={c.guest.hasPhone} label="Mobile number on file" />
               <Check ok={c.guest.idRecorded} label="ID details recorded" />
               <Check ok={r.idVerified} label="ID verified" hint={c.requireId ? "Required by this property" : "Recommended"} />
@@ -135,7 +136,7 @@ export default async function CheckInPage({ params, searchParams }: PageProps<"/
                 <Field label="Available room">
                   <select name="roomId" required className={input}>
                     {c.freeRooms.length === 0 && <option value="">No rooms available for these dates</option>}
-                    {c.freeRooms.map((x) => <option key={x.id} value={x.id}>{x.number} · {x.type}{["CLEAN", "INSPECTED"].includes(x.housekeeping) ? "" : ` (${x.housekeeping.toLowerCase()})`}</option>)}
+                    {c.freeRooms.map((x) => <option key={x.id} value={x.id}>{x.number} · {x.type}{isReady({ occupied: false, clean: x.housekeeping as CleanState, outOfOrder: false, outOfService: false }, c.inspectionRequired) ? "" : ` (${x.housekeeping.toLowerCase()}, not ready)`}</option>)}
                   </select>
                 </Field>
                 {hasRoom && <Field label="Reason for the change"><input name="reason" required maxLength={200} className={input} /></Field>}

@@ -124,10 +124,11 @@ describe("reporting and blocking", () => {
 });
 
 describe("permissions and approval", () => {
-  it("only roles with rooms.block can block; housekeeping cannot even report", async () => {
+  it("only roles with rooms.block can block; housekeeping may report an issue but never block a room", async () => {
     const roomId = rooms.report;
     await expect(reportIssue(app, asRole(owner, "FRONT_DESK"), { ...base, roomId, mode: "OUT_OF_ORDER" })).rejects.toThrow(/permission/i);
-    await expect(reportIssue(app, asRole(owner, "HOUSEKEEPING"), { ...base, roomId, mode: "REPORT" })).rejects.toThrow(/permission/i);
+    await expect(reportIssue(app, asRole(owner, "HOUSEKEEPING"), { ...base, roomId, mode: "OUT_OF_ORDER" })).rejects.toThrow(/permission/i);
+    await expect(reportIssue(app, asRole(owner, "HOUSEKEEPING"), { ...base, roomId, mode: "REPORT" })).resolves.toMatchObject({ blocksRoom: false });
   });
 
   it("a block raised without approval authority needs a different manager to approve it", async () => {

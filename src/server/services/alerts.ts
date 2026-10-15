@@ -8,6 +8,7 @@ import { sortAlerts, type Alert } from "@/server/domain/kpi";
 import { formatInr } from "@/server/money";
 import { audit } from "./audit";
 import { complaintAlerts } from "./feedback";
+import { housekeepingBoard } from "./housekeepingTasks";
 import { operations, type Operations } from "./frontoffice";
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
@@ -22,13 +23,16 @@ export const isManagerView = (ctx: Pick<Ctx, "role" | "extra">) =>
  * resolution is stored (AlertAck), keyed by a stable kind+entity key.
  */
 export async function listAlerts(db: PrismaClient, ctx: Ctx, opts: { includeResolved?: boolean; ops?: Operations } = {}): Promise<Alert[]> {
-  authorize(ctx, "reservations.view");
-  const propertyId = requireProperty(ctx);
   const can = (p: Parameters<typeof roleHasPermission>[1]) => roleHasPermission(ctx.role, p, ctx.extra);
-  const ops = opts.ops ?? (await operations(db, ctx));
+  // Front-desk alerts need reservation access; housekeeping staff get the room and cleaning alerts only.
+  if (!can("reservations.view")) authorize(ctx, "housekeeping.view");
+  const propertyId = requireProperty(ctx);
+  const hasRes = can("reservations.view");
+  const ops = hasRes ? (opts.ops ?? (await operations(db, ctx))) : null;
   const alerts: Alert[] = [];
   const add = (a: Alert) => alerts.push(a);
   const link = (id: string) => `/app/reservations/${id}`;
+  if (ops) {
 
   for (const o of ops.overdueDepartures) add({ key: `overdue:${o.id}`, kind: "OVERDUE_CHECKOUT", severity: "CRITICAL", title: `Overdue checkout: ${o.guest}`, detail: `${o.room ? `Room ${o.room}, ` : ""}was due out ${o.departure} (${o.reference}).`, href: link(o.id) });
   for (const o of ops.conflicts) add({ key: `conflict:${o.id}`, kind: "ALLOCATION_CONFLICT", severity: "CRITICAL", title: `Room allocation conflict: ${o.guest}`, detail: `${o.conflict} (${o.reference}, arrives ${o.arrival}).`, href: `/app/check-in/${o.id}` });
@@ -37,6 +41,16 @@ export async function listAlerts(db: PrismaClient, ctx: Ctx, opts: { includeReso
   for (const o of ops.departuresExpected.filter((x) => (x.balanceMinor ?? 0) > 0)) add({ key: `balance:${o.id}`, kind: "OUTSTANDING_BALANCE", severity: "WARNING", title: `Balance due at checkout: ${o.guest}`, detail: `${formatInr(o.balanceMinor ?? 0)} outstanding${o.room ? `, room ${o.room}` : ""}.`, href: `/app/check-out/${o.id}` });
   for (const o of ops.noShowCandidates) add({ key: `noshow:${o.id}`, kind: "NO_SHOW_REVIEW", severity: "WARNING", title: `No-show to review: ${o.guest}`, detail: `Arrival ${o.arrival} has passed the review time ${ops.noShowCutoff} (${o.reference}).`, href: `/app/operations#no-shows` });
   for (const o of ops.toConfirm.filter((x) => x.arrival <= iso(new Date(Date.now() + 2 * DAY_MS)))) add({ key: `confirm:${o.id}`, kind: "NEEDS_CONFIRMATION", severity: "INFO", title: `Reservation needs confirmation: ${o.guest}`, detail: `${o.reference}, arrives ${o.arrival}.`, href: link(o.id) });
+  }
+
+  if (can("housekeeping.view")) {
+    const board = await housekeepingBoard(db, ctx);
+    for (const r of board.rows) {
+      if (r.arrivalToday && !r.ready) add({ key: `arrival-not-ready:${r.roomId}`, kind: "ARRIVAL_ROOM_NOT_READY", severity: "CRITICAL", title: `Room ${r.number} is not ready for today's arrival`, detail: `${board.labels[r.code]}${r.task ? `, task ${r.task.status.replace(/_/g, " ").toLowerCase()}` : ""}.`, href: "/app/housekeeping?state=arrivals-not-ready" });
+      if (r.overdue && r.task) add({ key: `hk-overdue:${r.task.id}`, kind: "CLEANING_OVERDUE", severity: "WARNING", title: `Cleaning overdue: room ${r.number}`, detail: `Task created ${r.task.createdAt.toISOString().slice(0, 16).replace("T", " ")} UTC and not finished.`, href: "/app/housekeeping?state=overdue" });
+      if (r.task?.status === "AWAITING_INSPECTION" && can("housekeeping.manage")) add({ key: `inspect:${r.task.id}:${r.task.version}`, kind: "AWAITING_INSPECTION", severity: "INFO", title: `Room ${r.number} awaits inspection`, detail: "Cleaned and waiting for a supervisor.", href: "/app/housekeeping?state=awaiting-inspection" });
+    }
+  }
 
   await withTenant(db, ctx.tenantId, async (tx) => {
     const blocks = await tx.maintenanceRequest.findMany({
