@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { postingRate, type RateSnapshot } from "@/server/domain/rates";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { authorize, requireProperty, type Ctx } from "@/server/auth/context";
 import { withTenant } from "@/server/db/withTenant";
@@ -299,16 +300,20 @@ export async function postRoomNightsTx(tx: Tx, ctx: Ctx, reservationId: string) 
   const rt = await tx.roomType.findFirstOrThrow({ where: { id: r.roomTypeId } });
   const folio = await ensureFolio(tx, ctx, reservationId);
   if (folio.status !== "OPEN") return { posted: 0, folioId: folio.id };
-  // A discounted booking carries its agreed nightly rate; otherwise the room type's base rate applies.
-  const rate = r.agreedRateMinor ?? rt.baseRateMinor;
-  if (rate <= 0) return { posted: 0, folioId: folio.id };
-  const extra = extraPersonPerNight({ adults: r.adults, children: r.children, ...rt });
-  // The tax band is chosen from the whole nightly tariff, so both lines are banded on rate + extras.
-  const tariff = rate + extra;
+  // Rates are those frozen when the booking was made, so later price edits never change an existing booking.
+  // Older bookings without a night-by-night snapshot fall back to their agreed rate, then the current base rate.
+  const snap = (r.rateSnapshot ?? null) as RateSnapshot | null;
+  const extra = extraPersonPerNight({
+    adults: r.adults, children: r.children, baseOccupancy: snap?.baseOccupancy ?? rt.baseOccupancy,
+    extraAdultRateMinor: snap?.extraAdultMinor ?? rt.extraAdultRateMinor, extraChildRateMinor: snap?.extraChildMinor ?? rt.extraChildRateMinor,
+  });
   let posted = 0;
   for (const night of stayNights(iso(r.arrival), iso(r.departure))) {
+    const rate = postingRate(snap, night, r.agreedRateMinor, rt.baseRateMinor);
+    // The tax band is chosen from the whole nightly tariff, so both lines are banded on rate + extras.
+    const tariff = rate + extra;
     const key = `room:${reservationId}:${night}`;
-    if (!(await tx.folioEntry.findFirst({ where: { tenantId: ctx.tenantId, idempotencyKey: key } }))) {
+    if (rate > 0 && !(await tx.folioEntry.findFirst({ where: { tenantId: ctx.tenantId, idempotencyKey: key } }))) {
       await insertCharge(tx, ctx, folio, "CHARGE", {
         category: "ROOM", description: `Room charge ${night}`, amountMinor: rate, taxInclusive: false,
         quantity: 1, serviceDate: night, idempotencyKey: key,
@@ -316,7 +321,7 @@ export async function postRoomNightsTx(tx: Tx, ctx: Ctx, reservationId: string) 
       posted += 1;
     }
     const extraKey = `extra:${reservationId}:${night}`;
-    if (extra > 0 && !(await tx.folioEntry.findFirst({ where: { tenantId: ctx.tenantId, idempotencyKey: extraKey } }))) {
+    if (rate > 0 && extra > 0 && !(await tx.folioEntry.findFirst({ where: { tenantId: ctx.tenantId, idempotencyKey: extraKey } }))) {
       await insertCharge(tx, ctx, folio, "CHARGE", {
         category: "ROOM", description: `Extra person charge ${night}`, amountMinor: extra, taxInclusive: false,
         quantity: 1, serviceDate: night, idempotencyKey: extraKey,

@@ -106,7 +106,7 @@ export async function roomBoard(db: PrismaClient, ctx: Ctx, input: BoardFilter =
     const date = f.date ?? today;
     const live = date === today;
 
-    const allRooms = await tx.room.findMany({ where: { propertyId }, include: { roomType: true, building: true, floorRef: true } });
+    const allRooms = await tx.room.findMany({ where: { propertyId, active: true }, include: { roomType: true, building: true, floorRef: true } });
     const buildings = [...new Map(allRooms.filter((r) => r.building).map((r) => [r.building!.id, r.building!.name])).entries()].map(([id, name]) => ({ id, name }));
     const floors = [...new Set(allRooms.map((r) => r.floor).filter((x): x is number => x !== null))].sort((a, b) => a - b);
     const roomTypes = [...new Map(allRooms.map((r) => [r.roomTypeId, r.roomType.name])).entries()].map(([id, name]) => ({ id, name }));

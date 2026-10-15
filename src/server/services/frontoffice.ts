@@ -430,7 +430,7 @@ export async function housekeepingSummary(db: PrismaClient, ctx: Ctx) {
   const propertyId = requireProperty(ctx);
   return withTenant(db, ctx.tenantId, async (tx) => {
     const [rooms, tasks, requests] = await Promise.all([
-      tx.room.findMany({ where: { propertyId }, select: { housekeeping: true, outOfOrder: true } }),
+      tx.room.findMany({ where: { propertyId, active: true }, select: { housekeeping: true, outOfOrder: true } }),
       tx.housekeepingTask.count({ where: { propertyId, status: { in: ["PENDING", "IN_PROGRESS"] } } }),
       tx.maintenanceRequest.findMany({ where: { propertyId, status: { not: "RESOLVED" } }, include: { room: { select: { number: true } } }, orderBy: { createdAt: "asc" } }),
     ]);

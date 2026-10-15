@@ -43,6 +43,7 @@ export async function createRoom(db: PrismaClient, ctx: Ctx, input: unknown) {
   return withTenant(db, ctx.tenantId, async (tx) => {
     const rt = await tx.roomType.findFirst({ where: { id: d.roomTypeId, propertyId } });
     if (!rt) throw new AppError("NOT_FOUND", "Room type not found.");
+    if (!rt.active) throw new AppError("VALIDATION", `Category "${rt.name}" is inactive.`);
     const dup = await tx.room.findFirst({ where: { propertyId, number: d.number } });
     if (dup) throw new AppError("CONFLICT", `Room ${d.number} already exists.`);
     const placement: { floor?: number; floorId?: string; buildingId?: string } = {};
@@ -70,11 +71,12 @@ export async function setRoomFloor(db: PrismaClient, ctx: Ctx, roomId: string, f
   });
 }
 
+/** Active categories (the ones that can be booked). The Categories page lists inactive ones too. */
 export async function listRoomTypes(db: PrismaClient, ctx: Ctx) {
   authorize(ctx, "rooms.view");
   const propertyId = requireProperty(ctx);
   return withTenant(db, ctx.tenantId, (tx) =>
-    tx.roomType.findMany({ where: { propertyId }, orderBy: { name: "asc" } }),
+    tx.roomType.findMany({ where: { propertyId, active: true }, orderBy: { name: "asc" } }),
   );
 }
 
@@ -82,7 +84,7 @@ export async function listRooms(db: PrismaClient, ctx: Ctx) {
   authorize(ctx, "rooms.view");
   const propertyId = requireProperty(ctx);
   return withTenant(db, ctx.tenantId, (tx) =>
-    tx.room.findMany({ where: { propertyId }, include: { roomType: true, building: true, floorRef: true }, orderBy: { number: "asc" } }),
+    tx.room.findMany({ where: { propertyId, active: true }, include: { roomType: true, building: true, floorRef: true }, orderBy: { number: "asc" } }),
   );
 }
 

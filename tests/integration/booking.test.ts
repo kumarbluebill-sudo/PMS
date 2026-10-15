@@ -175,7 +175,9 @@ describe("booking", () => {
   it("ignores any totals or rates supplied by the browser", async () => {
     const w = dates();
     const r = await createBooking(app, owner, { newGuest: guest(), roomTypeId: deluxe, ...w, totalMinor: 1, rateMinor: 1, quotedTotalMinor: 1, agreedRateMinor: 1 });
-    expect(r.reservations[0]).toMatchObject({ quotedTotalMinor: 900_000, agreedRateMinor: null });
+    // The booking freezes the server's own rate (never the browser's 1), so later price edits cannot reprice it.
+    expect(r.reservations[0]).toMatchObject({ quotedTotalMinor: 900_000, agreedRateMinor: r.quote.rateMinor });
+    expect(r.quote.rateMinor).toBeGreaterThan(1);
   });
 
   it("accepts the listed booking sources and legacy values, rejects others", async () => {

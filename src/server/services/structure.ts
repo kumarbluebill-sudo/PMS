@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { guardFloorDeactivation } from "./property";
 import type { PrismaClient } from "@prisma/client";
 import { authorize, requireProperty, type Ctx } from "@/server/auth/context";
 import { withTenant } from "@/server/db/withTenant";
@@ -65,6 +66,12 @@ export async function setBuildingActive(db: PrismaClient, ctx: Ctx, id: string, 
   return withTenant(db, ctx.tenantId, async (tx) => {
     const b = await tx.building.findFirst({ where: { id, propertyId } });
     if (!b) throw new AppError("NOT_FOUND", "Building not found.");
+    if (!active) {
+      const floors = await tx.floor.findMany({ where: { buildingId: id }, select: { id: true } });
+      await guardFloorDeactivation(tx, floors.map((f) => f.id));
+      const direct = await tx.room.count({ where: { buildingId: id, active: true } });
+      if (direct) throw new AppError("CONFLICT", `${direct} active room${direct === 1 ? " is" : "s are"} still in this building. Move them first.`);
+    }
     await tx.building.update({ where: { id }, data: { active } });
     await tx.floor.updateMany({ where: { buildingId: id }, data: { active } });
     await audit(tx, ctx, { action: active ? "building.activate" : "building.deactivate", entityType: "Building", entityId: id, before: { active: b.active }, after: { active } });
@@ -77,6 +84,7 @@ export async function setFloorActive(db: PrismaClient, ctx: Ctx, id: string, act
   return withTenant(db, ctx.tenantId, async (tx) => {
     const f = await tx.floor.findFirst({ where: { id, propertyId } });
     if (!f) throw new AppError("NOT_FOUND", "Floor not found.");
+    if (!active) await guardFloorDeactivation(tx, [id]);
     await tx.floor.update({ where: { id }, data: { active } });
     await audit(tx, ctx, { action: active ? "floor.activate" : "floor.deactivate", entityType: "Floor", entityId: id, before: { active: f.active }, after: { active } });
   });
@@ -141,7 +149,7 @@ export async function getFloorPlan(db: PrismaClient, ctx: Ctx, floorId: string) 
     const floor = await tx.floor.findFirst({ where: { id: floorId, propertyId }, include: { building: true } });
     if (!floor) throw new AppError("NOT_FOUND", "Floor not found.");
     const rooms = await tx.room.findMany({
-      where: { propertyId, floorId },
+      where: { propertyId, floorId, active: true },
       include: { roomType: { select: { name: true } } },
       orderBy: { number: "asc" },
     });

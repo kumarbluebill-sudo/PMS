@@ -73,6 +73,16 @@ model Property {
   gstin         String?
   gstStateCode  String?
   invoicePrefix String   @default("INV")
+  // Profile
+  code               String?
+  phone              String?
+  email              String?
+  description        String?
+  amenities          String[] @default([])
+  logoUrl            String?
+  imageUrls          String[] @default([])
+  operationalAddress String?
+  status             String   @default("ACTIVE") // ACTIVE | INACTIVE | ARCHIVED
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -88,6 +98,7 @@ model Property {
   folios       Folio[]
   shifts       CashShift[]
   invoices     Invoice[]
+  ratePlans    RatePlan[]
 
   @@unique([tenantId, id])
   @@index([tenantId])
@@ -122,10 +133,15 @@ model RoomType {
   description  String?
   bedConfig    String?
   amenities    String[] @default([])
+  code         String?
+  active       Boolean  @default(true)
+  imageUrls    String[] @default([])
   createdAt    DateTime @default(now())
+  updatedAt    DateTime @default(now()) @updatedAt
 
   property Property @relation(fields: [propertyId], references: [id])
   rooms    Room[]
+  planRates RatePlanRate[]
 
   @@index([tenantId, propertyId])
   @@map("room_types")
@@ -185,7 +201,12 @@ model Room {
   /// Tile position on the floor plan grid (0-based); null = not yet placed.
   layoutX        Int?
   layoutY        Int?
+  name           String?
+  active         Boolean  @default(true)
+  archivedAt     DateTime?
+  notes          String?
   createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
 
   property    Property   @relation(fields: [propertyId], references: [id])
   roomType    RoomType   @relation(fields: [roomTypeId], references: [id])
@@ -261,6 +282,10 @@ model Reservation {
   idVerifiedBy            String?   @db.Uuid
   noShowAt                DateTime?
   externalRef             String? // OTA or channel booking reference
+  /// Rates frozen when the booking was made: { nightly: {date: minor}, extraAdultMinor, extraChildMinor, baseOccupancy }.
+  /// Later changes to room-type or rate-plan prices never alter this booking.
+  rateSnapshot            Json?
+  ratePlanId              String?   @db.Uuid
 
   property    Property @relation(fields: [propertyId], references: [id])
   guest       Guest    @relation(fields: [guestId], references: [id])
@@ -878,4 +903,57 @@ model AlertAck {
   @@unique([propertyId, alertKey])
   @@index([tenantId, propertyId])
   @@map("alert_acks")
+}
+
+// ---------- Rate plans ----------
+
+/// A priced offer for one or more room categories. Pre-tax: GST comes from the tax rules. Existing bookings keep their
+/// own frozen rates (Reservation.rateSnapshot), so editing a plan never reprices them.
+model RatePlan {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @db.Uuid
+  propertyId  String    @db.Uuid
+  name        String
+  code        String
+  description String?
+  active      Boolean   @default(true)
+  validFrom   DateTime? @db.Date
+  validTo     DateTime? @db.Date
+  /// Higher wins when plans overlap; then the narrower date window; then the newer plan.
+  priority    Int       @default(0)
+  /// Days charged the weekend rate, 0 = Sunday .. 6 = Saturday.
+  weekendDays Int[]     @default([5, 6])
+  mealPlan    String    @default("ROOM_ONLY") // ROOM_ONLY | BREAKFAST | HALF_BOARD | FULL_BOARD
+  refundable  Boolean   @default(true)
+  minStay     Int?
+  maxStay     Int?
+  taxNote     String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @default(now()) @updatedAt
+
+  property Property       @relation(fields: [propertyId], references: [id])
+  rates    RatePlanRate[]
+
+  @@unique([propertyId, code])
+  @@index([tenantId, propertyId])
+  @@map("rate_plans")
+}
+
+model RatePlanRate {
+  id                        String  @id @default(uuid()) @db.Uuid
+  tenantId                  String  @db.Uuid
+  ratePlanId                String  @db.Uuid
+  roomTypeId                String  @db.Uuid
+  weekdayRateMinor          Int
+  weekendRateMinor          Int?
+  singleOccupancyRateMinor  Int?
+  extraAdultRateMinor       Int?
+  extraChildRateMinor       Int?
+
+  ratePlan RatePlan @relation(fields: [ratePlanId], references: [id], onDelete: Cascade)
+  roomType RoomType @relation(fields: [roomTypeId], references: [id])
+
+  @@unique([ratePlanId, roomTypeId])
+  @@index([tenantId])
+  @@map("rate_plan_rates")
 }

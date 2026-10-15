@@ -69,7 +69,7 @@ export async function rangeKpis(db: PrismaClient, ctx: Ctx, input: unknown = {})
     if (span > MAX_DAYS) return rangeKpis(db, ctx, { from, to: addDays(from, MAX_DAYS - 1), focus: f.focus });
 
     const [rooms, types, blocks, resv, posted] = await Promise.all([
-      tx.room.findMany({ where: { propertyId }, select: { id: true, floor: true, roomTypeId: true, outOfOrder: true, floorRef: { select: { label: true, building: { select: { name: true } } } } } }),
+      tx.room.findMany({ where: { propertyId, active: true }, select: { id: true, floor: true, roomTypeId: true, outOfOrder: true, floorRef: { select: { label: true, building: { select: { name: true } } } } } }),
       tx.roomType.findMany({ where: { propertyId }, select: { id: true, name: true, baseRateMinor: true } }),
       tx.maintenanceRequest.findMany({ where: { propertyId, blocksRoom: true, status: { not: "RESOLVED" } }, select: { roomId: true, startDate: true, expectedResolution: true } }),
       tx.reservation.findMany({

@@ -20,7 +20,7 @@ export async function getOnboarding(db: PrismaClient, ctx: Ctx) {
       tx.building.count({ where: { propertyId, active: true } }),
       tx.floor.count({ where: { propertyId, active: true } }),
       tx.roomType.count({ where: { propertyId } }),
-      tx.room.count({ where: { propertyId } }),
+      tx.room.count({ where: { propertyId, active: true } }),
       tx.room.count({ where: { propertyId, layoutX: { not: null } } }),
     ]);
     return { state, property, counts: { buildings, floors, types, rooms, placed } };
@@ -46,7 +46,7 @@ export async function completeOnboarding(db: PrismaClient, ctx: Ctx) {
   authorize(ctx, "settings.manage");
   const propertyId = requireProperty(ctx);
   return withTenant(db, ctx.tenantId, async (tx) => {
-    const [types, rooms] = await Promise.all([tx.roomType.count({ where: { propertyId } }), tx.room.count({ where: { propertyId } })]);
+    const [types, rooms] = await Promise.all([tx.roomType.count({ where: { propertyId, active: true } }), tx.room.count({ where: { propertyId, active: true } })]);
     if (types === 0) throw new AppError("VALIDATION", "Add at least one room category before finishing.");
     if (rooms === 0) throw new AppError("VALIDATION", "Add at least one room before finishing.");
     await tx.onboardingState.upsert({

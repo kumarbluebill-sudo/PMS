@@ -34,6 +34,7 @@ export async function findFreeRooms(
     where: {
       propertyId,
       roomTypeId,
+      active: true,
       id: { notIn: [...blockedForStay] },
       assignments: {
         none: { active: true, arrival: { lt: toDate(departure) }, departure: { gt: toDate(arrival) } },

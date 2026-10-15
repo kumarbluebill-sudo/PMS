@@ -93,7 +93,7 @@ export async function calendar(db: PrismaClient, ctx: Ctx, start: string, days =
   const from = toDate(start);
   const to = new Date(from.getTime() + days * 86_400_000);
   return withTenant(db, ctx.tenantId, async (tx) => {
-    const rooms = await tx.room.findMany({ where: { propertyId }, include: { roomType: true }, orderBy: { number: "asc" } });
+    const rooms = await tx.room.findMany({ where: { propertyId, active: true }, include: { roomType: true }, orderBy: { number: "asc" } });
     const assignments = await tx.roomAssignment.findMany({
       where: { propertyId, active: true, arrival: { lt: to }, departure: { gt: from } },
       include: { reservation: { include: { guest: { select: { name: true } } } } },
@@ -154,13 +154,14 @@ export async function rack(db: PrismaClient, ctx: Ctx, f: RackFilter) {
   return withTenant(db, ctx.tenantId, async (tx) => {
     const [rooms, buildings, floors, types] = await Promise.all([
       tx.room.findMany({
-        where: { propertyId, ...(f.buildingId && { buildingId: f.buildingId }), ...(f.floorId && { floorId: f.floorId }), ...(f.roomTypeId && { roomTypeId: f.roomTypeId }) },
+        // Archived rooms stay visible only where they still carry a stay in this window.
+        where: { propertyId, OR: [{ active: true }, { assignments: { some: { arrival: { lt: toDate(end) }, departure: { gt: toDate(f.start) } } } }], ...(f.buildingId && { buildingId: f.buildingId }), ...(f.floorId && { floorId: f.floorId }), ...(f.roomTypeId && { roomTypeId: f.roomTypeId }) },
         include: { roomType: { select: { name: true } }, floorRef: { select: { label: true } }, building: { select: { name: true } } },
         orderBy: { number: "asc" },
       }),
       tx.building.findMany({ where: { propertyId, active: true }, orderBy: { sortOrder: "asc" } }),
       tx.floor.findMany({ where: { propertyId, active: true }, orderBy: [{ sortOrder: "asc" }, { level: "asc" }] }),
-      tx.roomType.findMany({ where: { propertyId }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
+      tx.roomType.findMany({ where: { propertyId, active: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
     ]);
     const roomIds = rooms.map((r) => r.id);
     const [assignments, blocks] = await Promise.all([

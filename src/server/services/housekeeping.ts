@@ -63,6 +63,6 @@ export async function listHousekeeping(db: PrismaClient, ctx: Ctx) {
   authorize(ctx, "housekeeping.view");
   const propertyId = requireProperty(ctx);
   return withTenant(db, ctx.tenantId, (tx) =>
-    tx.room.findMany({ where: { propertyId }, include: { roomType: true }, orderBy: { number: "asc" } }),
+    tx.room.findMany({ where: { propertyId, active: true }, include: { roomType: true }, orderBy: { number: "asc" } }),
   );
 }

@@ -6,6 +6,8 @@ import { withTenant } from "@/server/db/withTenant";
 import { AppError, toSafeError } from "@/server/errors";
 import { encryptSecret } from "@/server/crypto";
 import { calculateTax, TaxEngineError } from "@/server/domain/gst";
+import { extraPersonPerNight } from "@/server/domain/folio";
+import { effectiveExtras, effectiveNightRates, type RateSnapshot } from "@/server/domain/rates";
 import { BOOKING_SOURCES, LEGACY_SOURCES, discountedRate, normalizeMobile } from "@/server/domain/quote";
 import { nightsBetween, stayNights } from "@/server/domain/stay";
 import { dateInZone } from "@/server/domain/roomStatus";
@@ -13,6 +15,7 @@ import { audit } from "./audit";
 import { findFreeRooms, isOverlapError, newReference, toDate } from "./availability";
 import { ensureFolio, loadRules } from "./billing";
 import { recordPayment } from "./payments";
+import { loadPlans } from "./property";
 import { loadSettings } from "./settings";
 import { randomBytes } from "node:crypto";
 
@@ -29,6 +32,8 @@ const quoteFields = {
   children: z.number().int().min(0).max(100).default(0),
   discountPercentBp: z.number().int().min(0).max(10_000).optional(),
   discountAmountMinor: money.optional(),
+  /** A specific rate plan the guest chose; without it the best applicable plan is used. */
+  ratePlanId: z.string().uuid().optional(),
 };
 export const quoteSchema = z.object(quoteFields);
 export type QuoteInput = z.input<typeof quoteSchema>;
@@ -48,7 +53,14 @@ export type Quote = {
   /** Deposit the hotel asks for, from its reservation settings (0 when none). */
   depositRequiredMinor: number;
   roomType: string;
-  nightly: { date: string; netMinor: number; taxMinor: number; grossMinor: number }[];
+  nightly: { date: string; netMinor: number; taxMinor: number; grossMinor: number; rateMinor: number; planName: string | null }[];
+  /** The plan that set the rate (the first one when it changes during the stay). */
+  ratePlan: { id: string; name: string } | null;
+  rateVaries: boolean;
+  /** Extra-person charges included in the subtotal, before tax. */
+  extraPersonMinor: number;
+  /** Frozen onto each reservation when the booking is saved. */
+  snapshot: RateSnapshot;
 };
 
 function nightsOrThrow(arrival: string, departure: string) {
@@ -59,6 +71,9 @@ function nightsOrThrow(arrival: string, departure: string) {
   }
 }
 
+/** Splits a guest count across rooms the way the booking spreads them (earlier rooms take the remainder). */
+const shareOf = (total: number, rooms: number, i: number) => Math.floor(total / rooms) + (i < total % rooms ? 1 : 0);
+
 /** Availability, nightly rates, discount and GST for a stay. Runs inside the caller's transaction; the browser's numbers are never used. */
 export async function computeQuote(tx: Tx, ctx: Ctx, propertyId: string, input: z.output<typeof quoteSchema>): Promise<Quote> {
   const nights = nightsOrThrow(input.arrival, input.departure);
@@ -66,51 +81,82 @@ export async function computeQuote(tx: Tx, ctx: Ctx, propertyId: string, input: 
   const st = await loadSettings(tx, ctx.tenantId, propertyId);
   if (nights < st["reservation.minNights"]) throw new AppError("VALIDATION", `The minimum stay is ${st["reservation.minNights"]} night(s).`);
   if (nights > st["reservation.maxNights"]) throw new AppError("VALIDATION", `The maximum stay is ${st["reservation.maxNights"]} night(s).`);
-  const [rt, property, rules] = await Promise.all([
+  const [rt, property, rules, plans] = await Promise.all([
     tx.roomType.findFirst({ where: { id: input.roomTypeId, propertyId } }),
     tx.property.findFirstOrThrow({ where: { id: propertyId } }),
     loadRules(tx, ctx.tenantId),
+    loadPlans(tx, propertyId),
   ]);
   if (!rt) throw new AppError("NOT_FOUND", "Room type not found.");
-  let rate: number;
-  try {
-    rate = discountedRate(rt.baseRateMinor, { percentBp: input.discountPercentBp, amountMinor: input.discountAmountMinor });
-  } catch (e) {
-    throw new AppError("VALIDATION", e instanceof Error ? e.message : "Invalid discount.");
+  if (!rt.active) throw new AppError("VALIDATION", `"${rt.name}" is not open for new bookings.`);
+  if (input.ratePlanId) {
+    const chosen = plans.find((p) => p.id === input.ratePlanId);
+    if (!chosen || !chosen.active || !chosen.rates.some((r) => r.roomTypeId === rt.id)) throw new AppError("VALIDATION", "That rate plan is not available for this category.");
   }
-  const discountPct = rt.baseRateMinor > 0 ? ((rt.baseRateMinor - rate) * 100) / rt.baseRateMinor : 0;
-  if (discountPct > st["billing.maxDiscountPercent"] + 1e-9) {
-    throw new AppError("VALIDATION", `Discounts are limited to ${st["billing.maxDiscountPercent"]}% at this property.`);
-  }
+
+  const dates = stayNights(input.arrival, input.departure);
+  const base = effectiveNightRates({
+    roomTypeId: rt.id, baseRateMinor: rt.baseRateMinor, dates, adults: Math.ceil(input.adults / input.rooms), children: Math.ceil(input.children / input.rooms),
+    plans, onlyPlanId: input.ratePlanId ?? null,
+  });
+  const extras = effectiveExtras(base, plans, rt.id, rt);
+  // Each night is discounted on its own rate, and the cap applies to every night.
+  const discount = { percentBp: input.discountPercentBp, amountMinor: input.discountAmountMinor };
+  const rated = base.map((n) => {
+    let rate: number;
+    try {
+      rate = discountedRate(n.rateMinor, discount);
+    } catch (e) {
+      throw new AppError("VALIDATION", e instanceof Error ? e.message : "Invalid discount.");
+    }
+    const pct = n.rateMinor > 0 ? ((n.rateMinor - rate) * 100) / n.rateMinor : 0;
+    if (pct > st["billing.maxDiscountPercent"] + 1e-9) throw new AppError("VALIDATION", `Discounts are limited to ${st["billing.maxDiscountPercent"]}% at this property.`);
+    return { ...n, base: n.rateMinor, rate };
+  });
   const free = await findFreeRooms(tx, propertyId, rt.id, input.arrival, input.departure);
 
   let taxStatus: Quote["taxStatus"] = property.gstRegistered ? "APPLIED" : "NOT_REGISTERED";
   let taxNote: string | null = property.gstRegistered ? null : "This property is not GST registered: a Bill of Supply is issued and no GST is charged.";
-  const nightly: Quote["nightly"] = [];
-  for (const date of stayNights(input.arrival, input.departure)) {
-    let netMinor = rate, taxMinor = 0, grossMinor = rate;
+  const supplier = { supplierRegistered: property.gstRegistered, supplierStateCode: property.gstStateCode, recipientStateCode: null };
+  const taxOf = (amountMinor: number, date: string, tariff: number) => {
     try {
-      const t = calculateTax(
-        { amountMinor: rate, taxInclusive: false, category: "ROOM", serviceDate: date, unitTariffMinor: rate },
-        { supplierRegistered: property.gstRegistered, supplierStateCode: property.gstStateCode, recipientStateCode: null },
-        rules,
-      );
-      ({ netMinor, taxMinor, grossMinor } = t);
+      return calculateTax({ amountMinor, taxInclusive: false, category: "ROOM", serviceDate: date, unitTariffMinor: tariff }, supplier, rules);
     } catch (e) {
       if (!(e instanceof TaxEngineError)) throw e;
       taxStatus = "UNCONFIGURED";
       taxNote = `GST could not be estimated: ${e.message}`;
+      return { netMinor: amountMinor, taxMinor: 0, grossMinor: amountMinor };
     }
-    nightly.push({ date, netMinor, taxMinor, grossMinor });
+  };
+  // Extra-person charges are priced per room from how guests are spread, and taxed on the whole nightly tariff.
+  const extraPerRoom = Array.from({ length: input.rooms }, (_, i) =>
+    extraPersonPerNight({ adults: Math.max(1, shareOf(input.adults, input.rooms, i)), children: shareOf(input.children, input.rooms, i), baseOccupancy: rt.baseOccupancy, ...extras }),
+  );
+  const nightly: Quote["nightly"] = [];
+  let extraTotal = 0;
+  for (const n of rated) {
+    let netMinor = 0, taxMinor = 0, grossMinor = 0;
+    for (const extra of extraPerRoom) {
+      const room = taxOf(n.rate, n.date, n.rate + extra);
+      netMinor += room.netMinor; taxMinor += room.taxMinor; grossMinor += room.grossMinor;
+      if (extra > 0) {
+        const x = taxOf(extra, n.date, n.rate + extra);
+        netMinor += x.netMinor; taxMinor += x.taxMinor; grossMinor += x.grossMinor;
+        extraTotal += x.netMinor;
+      }
+    }
+    nightly.push({ date: n.date, netMinor, taxMinor, grossMinor, rateMinor: n.rate, planName: n.planName });
   }
-  const sum = (k: "netMinor" | "taxMinor" | "grossMinor") => nightly.reduce((t, n) => t + n[k], 0) * input.rooms;
+  const sum = (k: "netMinor" | "taxMinor" | "grossMinor") => nightly.reduce((t, n) => t + n[k], 0);
+  const first = rated[0];
+  const plan = base.find((n) => n.planId);
   return {
     available: free.length,
     rooms: input.rooms,
     nights,
-    baseRateMinor: rt.baseRateMinor,
-    rateMinor: rate,
-    discountPerNightMinor: rt.baseRateMinor - rate,
+    baseRateMinor: first.base,
+    rateMinor: first.rate,
+    discountPerNightMinor: first.base - first.rate,
     subtotalMinor: sum("netMinor"),
     taxMinor: sum("taxMinor"),
     totalMinor: sum("grossMinor"),
@@ -119,6 +165,13 @@ export async function computeQuote(tx: Tx, ctx: Ctx, propertyId: string, input: 
     depositRequiredMinor: Math.floor((sum("grossMinor") * st["reservation.depositPercent"] + 50) / 100),
     roomType: rt.name,
     nightly,
+    ratePlan: plan ? { id: plan.planId!, name: plan.planName! } : null,
+    rateVaries: new Set(rated.map((n) => n.rate)).size > 1,
+    extraPersonMinor: extraTotal,
+    snapshot: {
+      nightly: Object.fromEntries(rated.map((n) => [n.date, n.rate])),
+      extraAdultMinor: extras.extraAdultRateMinor, extraChildMinor: extras.extraChildRateMinor, baseOccupancy: rt.baseOccupancy,
+    },
   };
 }
 
@@ -136,7 +189,7 @@ export async function availabilityByType(db: PrismaClient, ctx: Ctx, arrival: st
   const propertyId = requireProperty(ctx);
   nightsOrThrow(arrival, departure);
   return withTenant(db, ctx.tenantId, async (tx) => {
-    const types = await tx.roomType.findMany({ where: { propertyId }, orderBy: { name: "asc" }, include: { _count: { select: { rooms: true } } } });
+    const types = await tx.roomType.findMany({ where: { propertyId, active: true }, orderBy: { name: "asc" }, include: { _count: { select: { rooms: { where: { active: true } } } } } });
     return Promise.all(
       types.map(async (t) => ({
         id: t.id, name: t.name, totalRooms: t._count.rooms, baseRateMinor: t.baseRateMinor,
@@ -289,8 +342,8 @@ export async function createBooking(
             tenantId: ctx.tenantId, propertyId, reference: newReference(st["reservation.referencePrefix"]), guestId: guestId!, roomTypeId: d.roomTypeId,
             source: d.source, arrival: toDate(d.arrival), departure: toDate(d.departure), adults, children,
             notes: d.notes, status: d.status, createdBy: ctx.userId, groupRef, companyName: d.companyName, agentName: d.agentName, externalRef: d.externalRef || null,
-            ratePlan: d.ratePlan, agreedRateMinor: discounted ? quote.rateMinor : null, discountReason: discounted ? d.discountReason : null,
-            quotedTotalMinor: perRoomTotal,
+            ratePlan: quote.ratePlan?.name ?? d.ratePlan, ratePlanId: quote.ratePlan?.id ?? null, agreedRateMinor: quote.rateMinor, rateSnapshot: quote.snapshot as unknown as Prisma.InputJsonValue,
+            discountReason: discounted ? d.discountReason : null, quotedTotalMinor: perRoomTotal,
           },
         });
         await tx.roomAssignment.create({
