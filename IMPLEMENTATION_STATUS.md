@@ -198,3 +198,22 @@ Verified by Vitest (381 tests, 46 files, including `tests/integration/delivery.t
 - The cron runs once a day at a fixed time on Vercel's free plan.
 - A category change drops any earlier discount and prices at current rates.
 - `email_outbox` has no row-level security (it is written before sign-in); staff queries filter by business.
+
+## GST setup, billing documents, navigation, subscriptions (2026-10-20)
+
+Done locally and covered by tests; not yet deployed (migration `20261020100000_subscriptions` must be applied to Supabase before the code is pushed).
+
+- **GST setup wizard** (`/app/settings/tax/setup`): editable accommodation presets as DRAFT rules flagged for accountant review (up to Rs. 7,500 at 5%, above at 18% from 22 Sep 2025, earlier slabs for older bookings), a preview calculator, confirm step. No other category has a default.
+- **Billing documents:** pro forma invoice, interim bill, ORIGINAL / DUPLICATE COPY labels with a print count, logo, stay details and a tax-by-SAC summary on the invoice PDF.
+- **Navigation:** regrouped sidebar, Reports hub, Help & Support, honest Channel Manager and Integrations pages, and an end-to-end test that opens every sidebar and settings link.
+- **Subscriptions:** plans, trials, plan limits, read-only mode, manual payments, daily job, subscription invoices and PDF, coupons, data export, platform console, public pricing and contact pages. See `docs/SUBSCRIPTIONS.md`.
+
+### Limits (honest list)
+
+- Subscription payments are recorded by a person; there is no gateway.
+- GST presets are defaults an accountant must check; GSTIN is checked by format and check digit only.
+- Phases 3 to 5 (integration marketplace and channel manager, payment gateway adapter, supplier registry, full security review) are not started.
+
+### New environment variables
+
+`CRON_SECRET` (already used) now also protects `/api/cron/subscriptions`. Optional `NEXT_PUBLIC_SITE_URL` for the sitemap and structured data. In the platform console set the provider's company details, payment instructions and sales email.

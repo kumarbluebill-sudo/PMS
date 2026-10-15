@@ -18,6 +18,7 @@ export const SETTING_DEFAULTS = {
   "saas.legalName": "MK Solutions",
   "saas.gstin": "",
   "saas.address": "",
+  "saas.sacCode": "",
   "saas.stateCode": "",
   "saas.gstBps": 1800,
   "saas.invoicePrefix": "MKS",
@@ -416,5 +417,35 @@ export async function getSubscriptionInvoice(db: PrismaClient, ctx: Ctx, id: str
     if (!inv) throw new AppError("NOT_FOUND", "Invoice not found.");
     const tenant = await tx.$queryRaw<{ legalName: string }[]>`SELECT "legalName" FROM tenants WHERE id = ${ctx.tenantId}::uuid`;
     return { inv, settings: await platformSettings(tx), customer: tenant[0]?.legalName ?? "" };
+  });
+}
+
+// ---------- what the hotel sees on every page ----------
+export type Banner = { tone: "info" | "warn" | "error"; text: string };
+const WORDS = { rooms: ["room", "rooms"], users: ["user", "users"], properties: ["property", "properties"] } as const;
+
+/** One short message for the top of the app: trial days, an invoice to pay, a lapsed account, or a plan limit nearly reached. */
+export async function subscriptionBanner(db: PrismaClient, ctx: Ctx, now = new Date()): Promise<Banner | null> {
+  return withTenant(db, ctx.tenantId, async (tx) => {
+    const sub = await subscriptionOf(tx, ctx.tenantId);
+    if (!sub) return null;
+    const open = await tx.subscriptionInvoice.findFirst({ where: { tenantId: ctx.tenantId, status: "OPEN" }, orderBy: { dueDate: "asc" } });
+    const st = sub.status as SubStatus;
+    const left = sub.trialEndsAt ? Math.max(0, Math.ceil((startOfDay(sub.trialEndsAt).getTime() - startOfDay(now).getTime()) / 86_400_000)) : 0;
+    if (st === "SUSPENDED" || st === "EXPIRED" || st === "CANCELLED") {
+      const word = st === "SUSPENDED" ? "suspended" : st === "EXPIRED" ? "expired" : "cancelled";
+      return { tone: "error", text: `Your subscription is ${word}, so this account is read-only. You can view and export everything; choose or renew a plan to make changes again.` };
+    }
+    if (st === "PAST_DUE") return { tone: "error", text: `Your payment is overdue${open ? ` (invoice ${open.number})` : ""}. Pay before ${isoDay(sub.graceEndsAt ?? now)} to avoid the account becoming read-only.` };
+    if (st === "PAYMENT_DUE") return { tone: "warn", text: `Your renewal invoice${open ? ` ${open.number}` : ""} is ready. Pay by ${isoDay(sub.periodEnd ?? now)} to keep your plan running.` };
+    if (st === "TRIAL") return { tone: "info", text: `Free trial: ${left} day${left === 1 ? "" : "s"} left. Choose a plan to keep your account running.` };
+    const usage = await usageCounts(tx, ctx.tenantId);
+    for (const r of ["rooms", "users", "properties"] as const) {
+      const limit = r === "rooms" ? sub.plan.maxRooms : r === "users" ? sub.plan.maxUsers : sub.plan.maxProperties;
+      const lvl = usageLevel(usage[r], limit);
+      if (lvl === "full") return { tone: "warn", text: `You have reached the ${limit} ${limit === 1 ? WORDS[r][0] : WORDS[r][1]} your ${sub.plan.name} plan allows. Upgrade to add more.` };
+      if (lvl === "near") return { tone: "info", text: `You are using ${usage[r]} of ${limit} ${WORDS[r][1]} on your ${sub.plan.name} plan. Upgrade soon to avoid being blocked.` };
+    }
+    return null;
   });
 }

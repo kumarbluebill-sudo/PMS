@@ -69,7 +69,7 @@ test("every app screen fits phone and tablet widths and has no serious accessibi
 });
 
 test("the public pages meet the same bar", async ({ page }) => {
-  for (const path of ["/", "/login", "/register", "/forgot-password"]) {
+  for (const path of ["/", "/login", "/register", "/forgot-password", "/pricing", "/pricing?billing=annual", "/contact", "/contact?demo=1"]) {
     for (const width of [390, 768]) {
       await page.setViewportSize({ width, height: 900 });
       await page.goto(path);

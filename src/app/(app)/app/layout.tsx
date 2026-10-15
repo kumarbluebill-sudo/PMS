@@ -3,7 +3,10 @@ import AppShell, { type NavGroup, type IconName, type SettingsLink } from "@/com
 import { propertyToday } from "@/server/services/roomBlocks";
 import { logoutAction, switchPropertyAction } from "@/app/actions";
 import { resendVerificationAction } from "@/app/account-actions";
+import { redirect } from "next/navigation";
+import Link from "next/link";
 import { getCtx } from "@/server/session";
+import { subscriptionBanner } from "@/server/services/subscription";
 import { getDb } from "@/server/db/client";
 import { withTenant } from "@/server/db/withTenant";
 import { roleHasPermission, type Permission } from "@/server/auth/permissions";
@@ -76,6 +79,9 @@ const GROUPS: { label: string; items: Def[] }[] = [
 
 export default async function AppLayout({ children }: LayoutProps<"/app">) {
   const ctx = await getCtx();
+  // The provider's own staff work in the platform console, not in a hotel.
+  if (ctx.role === "PLATFORM_SUPER_ADMIN" || ctx.role === "SAAS_SUPPORT_ADMIN") redirect("/platform");
+  const banner = await subscriptionBanner(getDb(), ctx).catch(() => null);
   const props = await withTenant(getDb(), ctx.tenantId, (tx) =>
     tx.property.findMany({ where: { id: { in: ctx.accessiblePropertyIds } }, select: { id: true, name: true } }),
   );
@@ -153,6 +159,12 @@ export default async function AppLayout({ children }: LayoutProps<"/app">) {
           <form action={resendVerificationAction} className="mb-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
             Your email is not verified. <button className="underline">Resend verification email</button>
           </form>
+        )}
+        {banner && (
+          <p role="status" className={`mb-4 rounded-md border p-3 text-sm ${banner.tone === "error" ? "border-red-200 bg-red-50 text-red-900" : banner.tone === "warn" ? "border-amber-200 bg-amber-50 text-amber-900" : "border-brand-200 bg-brand-50 text-brand-900"}`}>
+            {banner.text}{" "}
+            {roleHasPermission(ctx.role, "subscription.manage", ctx.extra) && <Link href="/app/settings/subscription" className="font-medium underline">Open Subscription &amp; Plans</Link>}
+          </p>
         )}
         {children}
       </main>

@@ -233,6 +233,7 @@ const settingSchemas = {
   "saas.legalName": z.string().trim().min(2).max(120),
   "saas.gstin": z.string().trim().toUpperCase().max(15),
   "saas.address": z.string().trim().max(300),
+  "saas.sacCode": z.string().trim().max(10),
   "saas.stateCode": z.string().trim().max(2),
   "saas.gstBps": z.number().int().min(0).max(5000),
   "saas.invoicePrefix": z.string().trim().toUpperCase().regex(/^[A-Z0-9]{2,8}$/, "Prefix: 2 to 8 letters or numbers."),

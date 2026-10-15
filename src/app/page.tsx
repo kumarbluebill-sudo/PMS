@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { btn } from "@/app/ui";
+import { PublicFooter, PublicHeader } from "@/components/PublicChrome";
 
 const TILES: { n: string; label: string; cls: string }[] = [
   { n: "101", label: "Available", cls: "border-green-400 bg-green-50 text-green-900" },
@@ -21,20 +22,15 @@ const FEATURES = [
 export default function Home() {
   return (
     <div className="min-h-screen bg-page">
-      <header className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
-        <span className="flex items-center gap-2.5 font-semibold text-brand-900">
-          <span aria-hidden className="grid h-8 w-8 place-items-center rounded-md bg-brand-900 text-base font-bold text-gold-400">M</span>
-          MK Hotel PMS
-        </span>
-        <Link href="/login" className="rounded-md px-3 py-1.5 text-sm font-medium text-brand-800 hover:bg-brand-100">Sign in</Link>
-      </header>
+      <PublicHeader />
       <main>
         <section className="mx-auto grid max-w-6xl items-center gap-10 px-4 py-12 md:grid-cols-2 md:py-20">
           <div>
             <h1 className="text-4xl font-semibold leading-tight text-slate-900 md:text-5xl">Run your hotel from one clear room board.</h1>
             <p className="mt-4 max-w-md text-base text-slate-600">Rooms, reservations, front desk, housekeeping and GST billing for hotels and resorts in India.</p>
             <div className="mt-6 flex flex-wrap gap-3">
-              <Link href="/register" className={`${btn} px-5 py-2.5`}>Create your hotel account</Link>
+              <Link href="/register" className={`${btn} px-5 py-2.5`}>Start free trial</Link>
+              <Link href="/pricing" className="inline-flex items-center rounded-md border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-800 hover:bg-slate-50">See pricing</Link>
               <Link href="/login" className="inline-flex items-center rounded-md border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-800 hover:bg-slate-50">Sign in</Link>
             </div>
           </div>
@@ -64,7 +60,7 @@ export default function Home() {
           </div>
         </section>
       </main>
-      <footer className="mx-auto max-w-6xl px-4 py-6 text-xs text-slate-500">MK Solutions Hotel PMS</footer>
+      <PublicFooter />
     </div>
   );
 }

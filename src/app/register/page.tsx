@@ -1,15 +1,19 @@
 import Link from "next/link";
 import AuthShell from "@/components/AuthShell";
 import { registerAction } from "@/app/actions";
+import { getDb } from "@/server/db/client";
 import { btn, ErrorBanner, Field, input } from "@/app/ui";
 
 export default async function RegisterPage({ searchParams }: PageProps<"/register">) {
-  const { error } = await searchParams;
+  const { error, plan } = await searchParams;
+  const chosen = typeof plan === "string" ? await getDb().plan.findFirst({ where: { code: plan, active: true, isPublic: true, customPricing: false }, select: { code: true, name: true, trialDays: true } }) : null;
   return (
     <AuthShell>
       <h1 className="text-2xl font-semibold">Create your hotel account</h1>
       <ErrorBanner message={typeof error === "string" ? error : undefined} />
+      {chosen && <p className="text-sm text-slate-700">Free trial of the <strong>{chosen.name}</strong> plan{chosen.trialDays > 0 ? `, ${chosen.trialDays} days` : ""}. No payment is taken now.</p>}
       <form action={registerAction} className="space-y-3">
+        {chosen && <input type="hidden" name="plan" value={chosen.code} />}
         <Field label="Business name">
           <input name="businessName" required className={input} />
         </Field>

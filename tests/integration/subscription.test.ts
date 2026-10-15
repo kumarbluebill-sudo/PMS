@@ -49,7 +49,7 @@ afterAll(async () => {
 
 describe("plans are data, and a new hotel starts a trial", () => {
   it("has the four seeded plans with editable prices", async () => {
-    const plans = await admin.plan.findMany({ orderBy: { sortOrder: "asc" } });
+    const plans = await admin.plan.findMany({ where: { code: { in: ["starter", "professional", "growth", "enterprise"] } }, orderBy: { sortOrder: "asc" } });
     expect(plans.map((p) => p.code)).toEqual(["starter", "professional", "growth", "enterprise"]);
     expect(plans.map((p) => p.monthlyPriceMinor)).toEqual([99_900, 249_900, 499_900, 999_900]);
     expect(plans[3].customPricing).toBe(true);
