@@ -13,7 +13,7 @@ export const SETTINGS_NAV: { href: string; label: string; perm: Permission }[] =
   { href: "/app/settings/permissions", label: "Roles & permissions", perm: "settings.view" },
   { href: "/app/messages", label: "WhatsApp", perm: "guests.view" },
   { href: "/app/settings/notifications", label: "Notifications", perm: "settings.view" },
-  { href: "/app/settings/channels", label: "Channel manager", perm: "settings.view" },
+  { href: "/app/channels", label: "Channel manager", perm: "settings.view" },
   { href: "/app/settings/reports", label: "Reports", perm: "settings.view" },
   { href: "/app/settings/backup", label: "Backup & recovery", perm: "backup.configure" },
   { href: "/app/settings/subscription", label: "Subscription", perm: "settings.view" },

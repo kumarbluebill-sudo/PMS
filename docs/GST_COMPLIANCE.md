@@ -1,6 +1,6 @@
 # GST compliance
 
-**This software is not GST-certified and has not been reviewed by a GST professional.** No GST rates, SAC codes or slabs are built in. A qualified Indian GST professional must verify the configuration (registration details, rules, tariff bands, effective dates) and the invoice format before any real invoice is issued.
+**This software is not GST-certified and has not been reviewed by a GST professional.** No rate is applied automatically. The GST setup wizard (Settings > GST & tax) offers editable presets for hotel accommodation (up to Rs. 7,500 per room per day at 5% and above at 18% from 22 September 2025, with the earlier slabs for older bookings). A preset only creates DRAFT rules, each marked "accountant review required", that a second person must approve. Restaurant, banquet, spa, laundry, transport and every other category have no default and must be configured by the hotel. A qualified Indian GST professional must verify the configuration (registration details, rules, tariff bands, effective dates) and the invoice format before any real invoice is issued.
 
 ## What is implemented (Phase 2)
 | Requirement | Implementation | Verified by |

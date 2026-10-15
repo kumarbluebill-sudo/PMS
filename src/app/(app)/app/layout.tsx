@@ -8,62 +8,68 @@ import { getDb } from "@/server/db/client";
 import { withTenant } from "@/server/db/withTenant";
 import { roleHasPermission, type Permission } from "@/server/auth/permissions";
 
-type Def = { href: string; label: string; perm: Permission; icon: IconName };
+type Def = { href: string; label: string; perm: Permission | null; icon: IconName };
 const GROUPS: { label: string; items: Def[] }[] = [
   {
-    label: "Front desk",
+    label: "Front office",
     items: [
-      { href: "/app/dashboard", label: "Room board", perm: "rooms.view", icon: "home" },
+      { href: "/app/dashboard", label: "Dashboard", perm: "rooms.view", icon: "home" },
       { href: "/app/operations", label: "Today's operations", perm: "reservations.view", icon: "list" },
       { href: "/app/alerts", label: "Alerts", perm: "reservations.view", icon: "shield" },
-      { href: "/app/front-desk", label: "Front desk", perm: "frontdesk.checkin", icon: "desk" },
+      { href: "/app/front-desk", label: "Front Desk", perm: "frontdesk.checkin", icon: "desk" },
       { href: "/app/reservations", label: "Reservations", perm: "reservations.view", icon: "list" },
       { href: "/app/reservations/calendar", label: "Calendar", perm: "reservations.view", icon: "calendar" },
       { href: "/app/guests", label: "Guests", perm: "guests.view", icon: "users" },
+      { href: "/app/feedback", label: "Feedback", perm: "feedback.view", icon: "star" },
+      { href: "/app/messages", label: "WhatsApp", perm: "guests.view", icon: "chat" },
     ],
   },
   {
-    label: "Housekeeping",
+    label: "Rooms",
     items: [
+      { href: "/app/property", label: "Room Inventory", perm: "rooms.view", icon: "building" },
+      { href: "/app/rooms", label: "Rooms", perm: "rooms.view", icon: "bed" },
+      { href: "/app/room-types", label: "Room categories", perm: "rooms.view", icon: "tag" },
+      { href: "/app/structure", label: "Floors and layout", perm: "rooms.view", icon: "building" },
+      { href: "/app/rates", label: "Rate plans", perm: "rooms.view", icon: "tax" },
       { href: "/app/housekeeping", label: "Housekeeping", perm: "housekeeping.view", icon: "broom" },
       { href: "/app/maintenance", label: "Maintenance", perm: "maintenance.manage", icon: "wrench" },
     ],
   },
   {
-    label: "Billing",
+    label: "Billing & Folios",
     items: [
       { href: "/app/billing", label: "Folios", perm: "billing.view", icon: "folio" },
       { href: "/app/invoices", label: "Invoices", perm: "billing.view", icon: "invoice" },
       { href: "/app/credit-notes", label: "Credit notes", perm: "billing.view", icon: "credit" },
       { href: "/app/payments", label: "Payments", perm: "billing.view", icon: "wallet" },
       { href: "/app/cashier", label: "Cashier", perm: "cashier.operate", icon: "cash" },
-      { href: "/app/invoices/gst-summary", label: "GST summary", perm: "accounting.view", icon: "tax" },
-      { href: "/app/accounting", label: "Accounting", perm: "accounting.view", icon: "chart" },
       { href: "/app/settings/tax", label: "GST & tax", perm: "tax.manage", icon: "tax" },
     ],
   },
   {
-    label: "Property",
+    label: "Reports",
     items: [
-      { href: "/app/property", label: "Property overview", perm: "rooms.view", icon: "building" },
-      { href: "/app/rooms", label: "Rooms", perm: "rooms.view", icon: "bed" },
-      { href: "/app/room-types", label: "Room categories", perm: "rooms.view", icon: "tag" },
-      { href: "/app/structure", label: "Floors and layout", perm: "rooms.view", icon: "building" },
-      { href: "/app/rates", label: "Rate plans", perm: "rooms.view", icon: "tax" },
+      { href: "/app/reports", label: "Reports", perm: "reservations.view", icon: "chart" },
+      { href: "/app/invoices/gst-summary", label: "GST summary", perm: "accounting.view", icon: "tax" },
+      { href: "/app/accounting", label: "Accounting", perm: "accounting.view", icon: "chart" },
     ],
   },
   {
-    label: "Guest care",
+    label: "Connections",
     items: [
-      { href: "/app/feedback", label: "Feedback", perm: "feedback.view", icon: "star" },
-      { href: "/app/messages", label: "WhatsApp", perm: "guests.view", icon: "chat" },
+      { href: "/app/channels", label: "Channel Manager", perm: "settings.view", icon: "calendar" },
+      { href: "/app/integrations", label: "Integrations", perm: "settings.view", icon: "shield" },
     ],
   },
   {
-    label: "Admin",
+    label: "Account",
     items: [
-      { href: "/app/users", label: "Users", perm: "users.manage", icon: "shield" },
+      { href: "/app/settings/subscription", label: "Subscription & Plans", perm: "subscription.manage", icon: "wallet" },
+      { href: "/app/settings", label: "Settings", perm: "settings.view", icon: "settings" },
+      { href: "/app/users", label: "Users", perm: "users.manage", icon: "users" },
       { href: "/app/audit-logs", label: "Audit log", perm: "audit.view", icon: "list" },
+      { href: "/app/help", label: "Help & Support", perm: null, icon: "chat" },
     ],
   },
 ];
@@ -75,7 +81,7 @@ export default async function AppLayout({ children }: LayoutProps<"/app">) {
   );
   const groups: NavGroup[] = GROUPS.map((g) => ({
     label: g.label,
-    items: g.items.filter((n) => roleHasPermission(ctx.role, n.perm, ctx.extra)).map(({ href, label, icon }) => ({ href, label, icon })),
+    items: g.items.filter((n) => n.perm === null || roleHasPermission(ctx.role, n.perm, ctx.extra)).map(({ href, label, icon }) => ({ href, label, icon })),
   })).filter((g) => g.items.length > 0);
   const current = props.find((p) => p.id === ctx.propertyId);
   const can = (p: Permission) => roleHasPermission(ctx.role, p, ctx.extra);

@@ -13,7 +13,7 @@ describe("settings catalogue", () => {
   });
 
   it("every entry has a label, a real permission and a group", () => {
-    const groups: Group[] = ["general", "reservations", "rooms", "billing", "security", "notifications", "reports", "backup"];
+    const groups: Group[] = ["general", "reservations", "rooms", "billing", "security", "notifications", "reports", "backup", "tax"];
     for (const k of SETTING_KEYS) {
       const d = DEFS[k];
       expect(d.label.length, k).toBeGreaterThan(2);

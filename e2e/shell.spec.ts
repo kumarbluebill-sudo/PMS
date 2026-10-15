@@ -26,7 +26,7 @@ test("navigation: grouped sidebar on desktop, drawer on phones", async ({ page }
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/app/reservations/calendar");
   const nav = page.getByRole("navigation", { name: "Sections" });
-  await expect(nav.getByText("Front desk", { exact: true }).first()).toBeVisible();
+  await expect(nav.getByText("Front office", { exact: true }).first()).toBeVisible();
   await expect(nav.getByRole("link", { name: "Calendar" })).toHaveAttribute("aria-current", "page");
   await expect(nav.getByRole("link", { name: "Reservations" })).not.toHaveAttribute("aria-current", "page");
 
@@ -117,4 +117,22 @@ test("command centre: header, quick actions, settings drawer, worklists and anal
   await expect(page.getByRole("heading", { name: "Alerts and tasks" })).toBeVisible();
   await page.goto("/app/dashboard/analytics");
   await expect(page.getByRole("heading", { name: "Occupancy and revenue" })).toBeVisible();
+});
+
+test("no dead navigation: every sidebar and settings link opens a page", async ({ page }) => {
+  test.setTimeout(240_000);
+  await signUp(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/app/dashboard");
+  const sidebar = await page.getByRole("navigation", { name: "Sections" }).locator("a").evaluateAll((as) => as.map((a) => (a as HTMLAnchorElement).getAttribute("href") ?? ""));
+  await page.goto("/app/settings/general");
+  const settings = await page.getByRole("navigation", { name: "Settings" }).locator("a").evaluateAll((as) => as.map((a) => (a as HTMLAnchorElement).getAttribute("href") ?? ""));
+  const hrefs = [...new Set([...sidebar, ...settings])].filter((h) => h.startsWith("/app"));
+  expect(hrefs.length).toBeGreaterThan(20);
+  for (const href of hrefs) {
+    const res = await page.goto(href);
+    expect(res?.status() ?? 0, href).toBeLessThan(400);
+    await expect(page, href).toHaveURL(/\/app\//);
+    await expect(page.getByRole("heading", { level: 1 }).first(), href).toBeVisible();
+  }
 });
