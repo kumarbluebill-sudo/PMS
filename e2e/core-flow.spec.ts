@@ -181,7 +181,15 @@ test("owner registers, enrols MFA, runs a stay end to end, and it is audited", a
 
   // Housekeeping shows the room dirty after checkout.
   await page.goto("/app/housekeeping");
-  await expect(page.getByText("dirty").first()).toBeVisible();
+  await expect(page.getByRole("table").getByText("Vacant – Dirty").first()).toBeVisible();
+  await expect(page.getByRole("link", { name: /Awaiting cleaning/ })).toBeVisible();
+  await expectAccessible(page, "housekeeping board");
+  // The cleaning cycle: start, then mark clean. The room becomes Vacant - Clean and ready.
+  await page.getByRole("button", { name: "Start cleaning" }).first().click();
+  await expect(page.getByText("Cleaning started.")).toBeVisible();
+  await page.getByRole("button", { name: "Mark clean" }).first().click();
+  await expect(page.getByText("Marked clean.")).toBeVisible();
+  await expect(page.getByRole("table").getByText("Vacant – Clean").first()).toBeVisible();
 
   // Guest feedback: staff create a private link, the guest answers without logging in, the link works once.
   await page.goto("/app/reservations");

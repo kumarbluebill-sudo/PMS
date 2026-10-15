@@ -54,3 +54,10 @@ Debit notes, advance receipts, folio transfers, expenses/suppliers, channels, su
 - `rate_plans` and `rate_plan_rates` carry tenant RLS and `pms_app` grants; checks keep dates, stay limits, meal plan and amounts valid.
 - The migration backfills `reservations.agreedRateMinor` and `rateSnapshot` for open bookings so later rate edits cannot reprice them.
 - Nothing is deleted by cascade except a plan's own rate lines. Rooms, categories, floors, buildings, plans and properties are archived or deactivated; permanent deletion is allowed only when nothing references the record (`services/property.ts`).
+
+## Guests, checkout and housekeeping (2026-10-18)
+- Migration `20261018100000_guest_checkout_housekeeping` is additive. `guests` gain `phoneKey` (last 10 digits, indexed with tenant, backfilled), `nationality`, `preferences`, `updatedAt`; `phone` keeps the number as typed.
+- `reservations` gain `actualDeparture` and `checkedOutBy` (backfilled from the status history for past checkouts).
+- `rooms` gain `dnd` and `dndAt`.
+- `housekeeping_tasks` gain `priority`, `reservationId`, `note`, `startedAt`, `inspectionRequestedAt`, `inspectedBy`, `inspectedAt`, `inspectionResult`, `updatedAt`, `updatedBy`, `version`, with checks on priority, status and inspection result.
+- New `app_notifications` (unique `(propertyId, dedupeKey)`) and `notification_reads`, both with tenant RLS and `pms_app` grants.
