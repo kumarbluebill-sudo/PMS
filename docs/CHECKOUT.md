@@ -19,3 +19,6 @@ If any step fails, none of it is saved. There is no state where a payment or inv
 - "Unresolved payment" is not modelled because payments are recorded only once received.
 - A late-checkout request is shown; the fee is added by hand on the folio.
 - Documents are sent to the guest from the reservation page (WhatsApp, with consent). Email is not delivered by this system.
+
+## Documents by email
+The completion page and reservation page offer the confirmation by email (with the PDF attached) when the guest has agreed to email and has a valid address. See `docs/DELIVERY.md`.

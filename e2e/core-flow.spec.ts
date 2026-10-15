@@ -104,6 +104,10 @@ test("owner registers, enrols MFA, runs a stay end to end, and it is audited", a
   await page.getByLabel("Mobile number").fill("98765 43210");
   await page.getByRole("button", { name: "Save booking" }).click();
   await expect(page.getByRole("heading", { name: "Booking confirmation" })).toBeVisible();
+  // Delivery is honest: with no email provider connected, the page says nothing will be sent, and the PDF still downloads.
+  await expect(page.getByText("No email provider is connected")).toBeVisible();
+  const confPdf = await page.request.get(await page.getByRole("link", { name: /Download PDF/ }).getAttribute("href") as string);
+  expect(confPdf.headers()["content-type"]).toBe("application/pdf");
   await expect(page.getByText(/MK-[0-9A-F]{8}/).first()).toBeVisible();
   await expect(page.getByText("Estimated total")).toBeVisible();
   await page.goto("/app/reservations");

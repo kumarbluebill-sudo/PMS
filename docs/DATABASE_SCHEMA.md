@@ -61,3 +61,6 @@ Debit notes, advance receipts, folio transfers, expenses/suppliers, channels, su
 - `rooms` gain `dnd` and `dndAt`.
 - `housekeeping_tasks` gain `priority`, `reservationId`, `note`, `startedAt`, `inspectionRequestedAt`, `inspectedBy`, `inspectedAt`, `inspectionResult`, `updatedAt`, `updatedBy`, `version`, with checks on priority, status and inspection result.
 - New `app_notifications` (unique `(propertyId, dedupeKey)`) and `notification_reads`, both with tenant RLS and `pms_app` grants.
+
+## Email delivery (2026-10-19)
+Migration `20261019100000_email_delivery` is additive. `email_outbox` gains `tenantId`, `reservationId`, `kind` (ACCOUNT or CONFIRMATION), `provider`, `providerId`, `error`, `idempotencyKey` (unique when set), `sentAt`, `deliveredAt`, and a status check: QUEUED, ACCEPTED, DELIVERED, BOUNCED, FAILED, TEST (SENT is the old value). The table has no row-level security because account emails are written before anyone is signed in; staff queries always filter by `tenantId`.
