@@ -7,7 +7,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
  * release idle connections quickly. Override with DB_POOL_MAX if the database allows more.
  */
 export function createDb(connectionString: string): PrismaClient {
-  const max = Math.max(1, Number(process.env.DB_POOL_MAX) || 2);
+  const max = Math.max(1, Number(process.env.DB_POOL_MAX) || 3);
   return new PrismaClient({
     adapter: new PrismaPg({ connectionString, max, idleTimeoutMillis: 5_000, connectionTimeoutMillis: 15_000 }),
   });
