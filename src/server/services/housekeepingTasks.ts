@@ -293,6 +293,30 @@ export async function createTask(db: PrismaClient, ctx: Ctx, input: unknown) {
   });
 }
 
+type Actor = Pick<Ctx, "tenantId" | "userId" | "requestId" | "propertyId">;
+
+/** The stayover work for one property inside a transaction. Idempotent per room per day; Do Not Disturb rooms are skipped. */
+export async function generateStayoverTx(tx: Prisma.TransactionClient, actor: Actor, propertyId: string) {
+  const property = await tx.property.findFirstOrThrow({ where: { id: propertyId }, select: { timezone: true } });
+  const today = dateInZone(new Date(), property.timezone);
+  const stays = await tx.roomAssignment.findMany({
+    where: { propertyId, active: true, reservation: { status: "CHECKED_IN" }, departure: { gt: toDate(today) }, arrival: { lte: toDate(today) } },
+    include: { room: true },
+  });
+  let created = 0, skippedDnd = 0, existing = 0;
+  for (const a of stays) {
+    if (a.room.dnd) { skippedDnd++; continue; }
+    const open = await tx.housekeepingTask.findFirst({ where: { roomId: a.roomId, status: { in: [...OPEN_TASK_STATUSES] } } });
+    const todays = await tx.housekeepingTask.findMany({ where: { roomId: a.roomId, kind: "STAYOVER" }, orderBy: { createdAt: "desc" }, take: 1 });
+    if (open || (todays[0] && dateInZone(todays[0].createdAt, property.timezone) === today)) { existing++; continue; }
+    await tx.housekeepingTask.create({ data: { tenantId: actor.tenantId, propertyId, roomId: a.roomId, kind: "STAYOVER", updatedBy: actor.userId } });
+    if (a.room.housekeeping !== "DIRTY") await tx.room.update({ where: { id: a.roomId }, data: { housekeeping: "DIRTY" } });
+    created++;
+  }
+  await audit(tx, actor, { action: "housekeeping.stayover_generated", entityType: "Property", entityId: propertyId, after: { created, skippedDnd, existing, date: today } });
+  return { created, skippedDnd, existing };
+}
+
 /**
  * Opens today's stayover (pickup) task for every in-house room that does not already have one and is not Do Not
  * Disturb. Safe to run more than once a day. Stayover rooms are occupied and need service, so they show Occupied – Dirty.
@@ -300,26 +324,35 @@ export async function createTask(db: PrismaClient, ctx: Ctx, input: unknown) {
 export async function generateStayoverTasks(db: PrismaClient, ctx: Ctx) {
   authorize(ctx, "housekeeping.manage");
   const propertyId = requireProperty(ctx);
-  return withTenant(db, ctx.tenantId, async (tx) => {
-    const property = await tx.property.findFirstOrThrow({ where: { id: propertyId }, select: { timezone: true } });
-    const today = dateInZone(new Date(), property.timezone);
-    const stays = await tx.roomAssignment.findMany({
-      where: { propertyId, active: true, reservation: { status: "CHECKED_IN" }, departure: { gt: toDate(today) }, arrival: { lte: toDate(today) } },
-      include: { room: true },
-    });
-    let created = 0, skippedDnd = 0, existing = 0;
-    for (const a of stays) {
-      if (a.room.dnd) { skippedDnd++; continue; }
-      const open = await tx.housekeepingTask.findFirst({ where: { roomId: a.roomId, status: { in: [...OPEN_TASK_STATUSES] } } });
-      const todays = await tx.housekeepingTask.findMany({ where: { roomId: a.roomId, kind: "STAYOVER" }, orderBy: { createdAt: "desc" }, take: 1 });
-      if (open || (todays[0] && dateInZone(todays[0].createdAt, property.timezone) === today)) { existing++; continue; }
-      await tx.housekeepingTask.create({ data: { tenantId: ctx.tenantId, propertyId, roomId: a.roomId, kind: "STAYOVER", updatedBy: ctx.userId } });
-      if (a.room.housekeeping !== "DIRTY") await tx.room.update({ where: { id: a.roomId }, data: { housekeeping: "DIRTY" } });
-      created++;
+  return withTenant(db, ctx.tenantId, (tx) => generateStayoverTx(tx, ctx, propertyId));
+}
+
+/** The id recorded as the actor for work done by the daily job rather than by a person. */
+export const SYSTEM_ACTOR = "00000000-0000-0000-0000-000000000000";
+
+/**
+ * The daily job: for every property that opted in (`housekeeping.autoStayover`), generate today's stayover tasks.
+ * One property failing never stops the others. Returns what was done, for the job log.
+ */
+export async function runStayoverForAllProperties(db: PrismaClient) {
+  const tenants = await db.tenant.findMany({ select: { id: true } });
+  const out = { tenants: tenants.length, properties: 0, optedIn: 0, created: 0, failed: 0 };
+  for (const t of tenants) {
+    const props = await withTenant(db, t.id, (tx) => tx.property.findMany({ where: { status: "ACTIVE" }, select: { id: true } }));
+    for (const p of props) {
+      out.properties++;
+      try {
+        const res = await withTenant(db, t.id, async (tx) => {
+          if (!(await loadSettings(tx, t.id, p.id))["housekeeping.autoStayover"]) return null;
+          return generateStayoverTx(tx, { tenantId: t.id, userId: SYSTEM_ACTOR, requestId: "cron:stayover", propertyId: p.id }, p.id);
+        });
+        if (res) { out.optedIn++; out.created += res.created; }
+      } catch {
+        out.failed++;
+      }
     }
-    await audit(tx, ctx, { action: "housekeeping.stayover_generated", entityType: "Property", entityId: propertyId, after: { created, skippedDnd, existing, date: today } });
-    return { created, skippedDnd, existing };
-  });
+  }
+  return out;
 }
 
 export const reportSchema = z.object({ roomId: z.string().uuid(), category: z.string(), title: z.string().trim().min(3, "Say what is wrong.").max(200), description: z.string().trim().max(2000).optional(), priority: z.enum(["LOW", "NORMAL", "HIGH", "URGENT"]).default("NORMAL") });

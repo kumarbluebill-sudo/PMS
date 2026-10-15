@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { getDb } from "@/server/db/client";
 import { getCtx } from "@/server/session";
 import { toSafeError } from "@/server/errors";
-import { modifyReservation } from "@/server/services/confirmation";
+import { changeRoomCategory, modifyReservation } from "@/server/services/confirmation";
 
 const str = (v: FormDataEntryValue | null) => (typeof v === "string" ? v : "");
 
@@ -24,6 +24,22 @@ export async function modifyReservationAction(fd: FormData) {
     ok = Number.isFinite(shown) && shown !== r.newTotalMinor
       ? "Booking changed, but the total differs from the preview because prices changed in the meantime. Check the new total."
       : "Booking changed. The new total is saved and the change is recorded.";
+  } catch (e) {
+    error = toSafeError(e).message;
+  }
+  revalidatePath("/app", "layout");
+  redirect(`/app/reservations/${id}?${error ? `error=${encodeURIComponent(error)}` : `ok=${encodeURIComponent(ok)}`}`);
+}
+
+/** Moves a booking to another room category after the staff member has seen the room and the new total. */
+export async function changeCategoryAction(fd: FormData) {
+  const ctx = await getCtx();
+  const id = str(fd.get("id"));
+  let error: string | null = null;
+  let ok = "";
+  try {
+    const r = await changeRoomCategory(getDb(), ctx, id, { roomTypeId: str(fd.get("roomTypeId")), roomId: str(fd.get("roomId")) || undefined, reason: str(fd.get("reason")), expectedUpdatedAt: str(fd.get("expectedUpdatedAt")) || undefined });
+    ok = `Room category changed. The booking is now in room ${r.room}.`;
   } catch (e) {
     error = toSafeError(e).message;
   }

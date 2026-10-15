@@ -8,6 +8,8 @@ export type PdfConfirmation = {
   logo?: { bytes: Uint8Array; type: "png" | "jpg" } | null;
   headerText?: string | null;
   footerText?: string | null;
+  /** One line shown under the title when this room is part of a group booking. */
+  groupSummary?: string | null;
   references: string[];
   status: string;
   guest: { name: string; phone?: string | null; email?: string | null };
@@ -89,6 +91,7 @@ export async function renderConfirmationPdf(c: PdfConfirmation): Promise<Uint8Ar
   put("Booking confirmation", M, y, bold, 16, accent);
   putRight(c.references.join("  "), W - M, y, bold, 12);
   y -= 14;
+  if (c.groupSummary) { for (const l of wrap(c.groupSummary, bold, 9, W - 2 * M)) { put(l, M, y, bold, 9); y -= 12; } }
   if (c.status === "TENTATIVE") { put("Pending: the room is held but the booking is not yet confirmed.", M, y, bold, 9, rgb(0.55, 0.3, 0)); y -= 12; }
   y -= 8;
   if (c.headerText) for (const l of wrap(c.headerText, font, size, W - 2 * M)) { put(l, M, y); y -= 12; }

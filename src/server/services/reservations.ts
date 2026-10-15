@@ -344,7 +344,7 @@ export type TimelineItem = { at: Date; by: string; what: string; detail?: string
 
 const ACTION_LABELS: Record<string, string> = {
   "reservation.create": "Reservation created", "reservation.change_departure": "Departure date changed", "reservation.move_room": "Room changed",
-  "reservation.assign_room": "Room assigned", "reservation.registration": "Registration updated", "reservation.id_verified": "ID verified", "reservation.modify": "Booking changed",
+  "reservation.assign_room": "Room assigned", "reservation.registration": "Registration updated", "reservation.id_verified": "ID verified", "reservation.modify": "Booking changed", "reservation.change_category": "Room category changed",
   "reservation.requests": "Requests or VIP updated", "reservation.no_show_confirmed": "No-show confirmed", "checkout.waive_balance": "Balance waived at checkout",
 };
 const brief = (o: unknown) => {

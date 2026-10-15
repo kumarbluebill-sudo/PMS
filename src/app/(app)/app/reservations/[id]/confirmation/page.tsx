@@ -9,6 +9,8 @@ import { settingsFor } from "@/server/services/settings";
 import { roleHasPermission } from "@/server/auth/permissions";
 import { getConsent, messagingStatus } from "@/server/services/messaging";
 import ReservationMessages from "../../../messages/ReservationMessages";
+import ReservationEmail from "../../../messages/ReservationEmail";
+import { emailStatus, listReservationEmails } from "@/server/services/emailOutbox";
 import { PrintButton } from "../../../PrintButton";
 
 export default async function Confirmation({ params, searchParams }: PageProps<"/app/reservations/[id]/confirmation">) {
@@ -19,6 +21,8 @@ export default async function Confirmation({ params, searchParams }: PageProps<"
   const first = group[0];
   const canMessage = roleHasPermission(ctx.role, "guests.manage", ctx.extra);
   const consent = canMessage ? await getConsent(getDb(), ctx, first.guestId) : null;
+  const emailConsent = canMessage ? await getConsent(getDb(), ctx, first.guestId, "EMAIL") : null;
+  const emails = canMessage ? await listReservationEmails(getDb(), ctx, first.id) : [];
   const st = await settingsFor(getDb(), ctx);
   const depositMinor = Math.floor((totalMinor * st["reservation.depositPercent"] + 50) / 100);
   const policies = [["Booking policies", st["general.bookingPolicies"]], ["Cancellation", st["reservation.cancellationPolicy"]], ["No-show", st["reservation.noShowRule"]], ["Children", st["reservation.childPolicy"]]].filter(([, v]) => v);
@@ -33,7 +37,7 @@ export default async function Confirmation({ params, searchParams }: PageProps<"
         )}
         <div className="flex flex-wrap items-center gap-2">
           <PrintButton />
-          <a href={`/app/reservations/${first.id}/confirmation/pdf`} className="text-sm underline">Download PDF</a>
+          <a href={`/app/reservations/${first.id}/confirmation/pdf`} className="text-sm underline">Download PDF{group.length > 1 ? " (all rooms)" : ""}</a>{group.length > 1 && <a href={`/app/reservations/${first.id}/confirmation/pdf?single=1`} className="text-sm underline">This room only</a>}
           <Link href={`/app/reservations/${first.id}`} className="text-sm underline">View reservation</Link>
           <Link href="/app/reservations/new" className="text-sm underline">New booking</Link>
           <Link href="/app/dashboard" className="text-sm underline">Room board</Link>
@@ -42,7 +46,8 @@ export default async function Confirmation({ params, searchParams }: PageProps<"
       {canMessage && (
         <div className="mb-3 print:hidden">
           <ReservationMessages reservationId={first.id} guestId={first.guestId} back={`/app/reservations/${first.id}/confirmation`} consent={consent ? { status: consent.status, source: consent.source } : null} hasPhone={!!first.guest.phone} testMode={!messagingStatus().configured} />
-          <p className="mt-1 text-xs text-slate-600">Messages go out only with the guest&rsquo;s consent and are marked sent only when the provider confirms. Email delivery is not set up for this system; use the PDF to email it yourself.</p>
+          <div className="mt-3"><ReservationEmail reservationId={first.id} guestId={first.guestId} back={`/app/reservations/${first.id}/confirmation`} consent={emailConsent ? { status: emailConsent.status, source: emailConsent.source } : null} hasEmail={!!first.guest.email} testMode={!emailStatus().configured} emails={emails} /></div>
+          <p className="mt-1 text-xs text-slate-700">Messages go out only with the guest&rsquo;s consent. WhatsApp and email are marked delivered only when the provider reports it.</p>
         </div>
       )}
       <article className="rounded-lg border border-slate-200 bg-white p-6 text-sm shadow-sm print:border-0 print:shadow-none">

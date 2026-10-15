@@ -6,6 +6,7 @@ import { getDb } from "@/server/db/client";
 import { AppError, toSafeError } from "@/server/errors";
 import { getCtx } from "@/server/session";
 import { retryMessage, saveTemplate, sendTemplate, setConsent } from "@/server/services/messaging";
+import { sendConfirmationEmail } from "@/server/services/emailOutbox";
 
 const str = (v: FormDataEntryValue | null) => (typeof v === "string" ? v : "");
 
@@ -29,7 +30,7 @@ export async function consentAction(fd: FormData) {
   const ctx = await getCtx();
   const back = safeBack(str(fd.get("back")), "/app/messages");
   await go(back, async () => {
-    await setConsent(getDb(), ctx, { guestId: str(fd.get("guestId")), status: str(fd.get("status")), source: str(fd.get("source")) });
+    await setConsent(getDb(), ctx, { guestId: str(fd.get("guestId")), status: str(fd.get("status")), source: str(fd.get("source")), channel: str(fd.get("channel")) || "WHATSAPP" });
     return "Consent recorded.";
   });
 }
@@ -42,6 +43,17 @@ export async function sendMessageAction(fd: FormData) {
     if (r.duplicate) return `Already ${r.status.toLowerCase()}. Nothing was sent again.`;
     if (r.status === "FAILED") throw new AppError("VALIDATION", r.error ?? "The message could not be sent.");
     return r.status === "TEST" ? "Recorded in test mode. Nothing was delivered because WhatsApp is not connected." : "Message handed to WhatsApp. Delivery status will update.";
+  });
+}
+
+export async function sendConfirmationEmailAction(fd: FormData) {
+  const ctx = await getCtx();
+  const back = safeBack(str(fd.get("back")), "/app/messages");
+  await go(back, async () => {
+    const r = await sendConfirmationEmail(getDb(), ctx, { reservationId: str(fd.get("reservationId")), nonce: str(fd.get("nonce")) || undefined });
+    if (r.duplicate) return `This confirmation was already emailed (${r.row.status.toLowerCase()}). Nothing was sent again.`;
+    if (r.row.status === "FAILED") throw new AppError("VALIDATION", r.row.error ?? "The email could not be sent.");
+    return r.row.status === "TEST" ? "Recorded in test mode. Nothing was emailed because no email provider is connected." : "Email accepted by the provider. Delivery is confirmed separately when the provider reports it.";
   });
 }
 

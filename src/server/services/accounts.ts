@@ -1,4 +1,5 @@
 import { generate, generateSecret, generateURI, verify } from "otplib";
+import { deliverEmail } from "./emailOutbox";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import type { PrismaClient } from "@prisma/client";
@@ -22,8 +23,16 @@ export async function recordAuthEvent(db: PrismaClient, userId: string, action: 
   });
 }
 
+/**
+ * Account emails (verification, password reset). Recorded, then sent if an email provider is configured. A sending
+ * problem never blocks sign-up or reset: the outbox row keeps the status and the reason.
+ */
 export async function sendEmail(db: PrismaClient, toEmail: string, subject: string, body: string) {
-  await db.emailOutbox.create({ data: { toEmail, subject, body } });
+  try {
+    await deliverEmail(db, { kind: "ACCOUNT", to: toEmail, subject, text: body });
+  } catch {
+    await db.emailOutbox.create({ data: { toEmail, subject, body, status: "FAILED", error: "Could not be recorded for sending." } }).catch(() => undefined);
+  }
 }
 
 const baseUrl = () => process.env.AUTH_URL ?? "http://localhost:3000";

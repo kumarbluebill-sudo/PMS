@@ -568,9 +568,20 @@ model EmailOutbox {
   toEmail   String
   subject   String
   body      String
-  status    String   @default("QUEUED") // QUEUED | SENT | FAILED
+  status    String   @default("QUEUED") // QUEUED | ACCEPTED | DELIVERED | BOUNCED | FAILED | TEST (SENT is the old value)
   createdAt DateTime @default(now())
+  tenantId       String?  @db.Uuid
+  reservationId  String?  @db.Uuid
+  kind           String   @default("ACCOUNT") // ACCOUNT | CONFIRMATION
+  provider       String?
+  providerId     String?
+  error          String?
+  idempotencyKey String?
+  sentAt         DateTime?
+  deliveredAt    DateTime?
 
+  @@index([tenantId, reservationId])
+  @@index([providerId])
   @@map("email_outbox")
 }
 

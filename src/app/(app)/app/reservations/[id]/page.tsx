@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { extendStayAction, moveRoomAction } from "@/app/account-actions";
-import { modifyReservationAction } from "@/app/reservation-actions";
+import { changeCategoryAction, modifyReservationAction } from "@/app/reservation-actions";
 import { Badge, btn, btnGhost, Card, ErrorBanner, Field, fmtDate, input, inr, PageHeader } from "@/app/ui";
-import { previewModification, reservationChecklist } from "@/server/services/confirmation";
+import { previewCategoryChange, previewModification, reservationChecklist } from "@/server/services/confirmation";
+import { listRoomTypes } from "@/server/services/rooms";
 import { AppError } from "@/server/errors";
 import { roleHasPermission } from "@/server/auth/permissions";
 import { getDb } from "@/server/db/client";
@@ -10,6 +11,8 @@ import { getCtx } from "@/server/session";
 import { listRooms } from "@/server/services/rooms";
 import { getReservation, reservationTimeline } from "@/server/services/reservations";
 import ReservationMessages from "../../messages/ReservationMessages";
+import ReservationEmail from "../../messages/ReservationEmail";
+import { listReservationEmails, emailStatus } from "@/server/services/emailOutbox";
 import { getConsent, messagingStatus } from "@/server/services/messaging";
 import { FeedbackLinkButton } from "../../FeedbackLinkButton";
 import { ReservationActions } from "../../ReservationActions";
@@ -27,6 +30,14 @@ export default async function StayDetail({ params, searchParams }: PageProps<"/a
   const canChange = roleHasPermission(ctx.role, "reservations.modify", ctx.extra) && (r.status === "TENTATIVE" || r.status === "CONFIRMED");
   const checklist = r.status === "TENTATIVE" ? await reservationChecklist(db, ctx, id) : null;
   const mod = { arrival: one(sp.m_arrival) || fmtDate(r.arrival), departure: one(sp.m_departure) || fmtDate(r.departure), adults: one(sp.m_adults) || String(r.adults), children: one(sp.m_children) || String(r.children) };
+  const types = canChange ? (await listRoomTypes(db, ctx)).filter((t) => t.id !== r.roomTypeId) : [];
+  const catId = canChange ? one(sp.c_type) : "";
+  let catPreview: Awaited<ReturnType<typeof previewCategoryChange>> | null = null;
+  let catError: string | null = null;
+  if (catId) {
+    try { catPreview = await previewCategoryChange(db, ctx, id, { roomTypeId: catId, roomId: one(sp.c_room) || undefined, reason: "preview" }); }
+    catch (e) { catError = e instanceof AppError ? e.message : "Check the category."; }
+  }
   const wantsPreview = canChange && !!one(sp.m_arrival);
   let preview: Awaited<ReturnType<typeof previewModification>> | null = null;
   let previewError: string | null = null;
@@ -37,6 +48,8 @@ export default async function StayDetail({ params, searchParams }: PageProps<"/a
   const back = `/app/reservations/${r.id}`;
   const canMessage = roleHasPermission(ctx.role, "guests.manage", ctx.extra);
   const consent = canMessage ? await getConsent(db, ctx, r.guestId) : null;
+  const emailConsent = canMessage ? await getConsent(db, ctx, r.guestId, "EMAIL") : null;
+  const emails = canMessage ? await listReservationEmails(db, ctx, r.id) : [];
   const room = r.assignments.find((a) => a.active)?.room ?? r.assignments.at(-1)?.room;
   return (
     <>
@@ -72,6 +85,9 @@ export default async function StayDetail({ params, searchParams }: PageProps<"/a
         </Card>
         {canMessage && (
           <ReservationMessages reservationId={r.id} guestId={r.guestId} back={back} consent={consent ? { status: consent.status, source: consent.source } : null} hasPhone={!!r.guest.phone} testMode={!messagingStatus().configured} />
+        )}
+        {canMessage && (
+          <ReservationEmail reservationId={r.id} guestId={r.guestId} back={back} consent={emailConsent ? { status: emailConsent.status, source: emailConsent.source } : null} hasEmail={!!r.guest.email} testMode={!emailStatus().configured} emails={emails} />
         )}
         {roleHasPermission(ctx.role, "feedback.manage", ctx.extra) && (r.status === "CHECKED_IN" || r.status === "CHECKED_OUT") && (
           <Card title="Guest feedback">
@@ -114,6 +130,27 @@ export default async function StayDetail({ params, searchParams }: PageProps<"/a
                   <input type="hidden" name="adults" value={mod.adults} /><input type="hidden" name="children" value={mod.children} /><input type="hidden" name="previewTotal" value={preview.newTotalMinor} />
                   <Field label="Reason for the change (optional)"><input name="reason" maxLength={200} className={input} /></Field>
                   <button className={btn}>Save change</button>
+                </form>
+              </div>
+            )}
+          </Card>
+        )}
+        {canChange && types.length > 0 && (
+          <Card title="Change room category">
+            <p className="mb-2 text-xs text-slate-700">Moves the booking to a free room of another category and prices the stay at that category&rsquo;s current rates. Any discount on the old booking is not carried over.</p>
+            <form method="get" className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
+              <Field label="New category"><select name="c_type" defaultValue={catId} className={input}><option value="">Choose a category</option>{types.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></Field>
+              <div className="flex items-end"><button className={btnGhost}>Check room and price</button></div>
+            </form>
+            {catError && <p role="alert" className="mt-2 rounded border border-red-300 bg-red-50 p-2 text-sm text-red-900">{catError}</p>}
+            {catPreview && (
+              <div className="mt-3 space-y-2 border-t pt-3 text-sm" role="status">
+                <p>{catPreview.from} to <strong>{catPreview.to}</strong>, room <strong>{catPreview.room}</strong> ({catPreview.nights} night(s)).{catPreview.canSeeMoney && <> Total was <strong>{inr(catPreview.oldTotalMinor)}</strong>, becomes <strong>{inr(catPreview.newTotalMinor)}</strong> ({catPreview.differenceMinor >= 0 ? "+" : ""}{inr(catPreview.differenceMinor)}).</>}{catPreview.discountDropped && " The earlier discount is not carried over."}</p>
+                <form action={changeCategoryAction} className="space-y-2">
+                  <input type="hidden" name="id" value={r.id} /><input type="hidden" name="roomTypeId" value={catId} /><input type="hidden" name="expectedUpdatedAt" value={r.updatedAt.toISOString()} />
+                  <Field label="Room"><select name="roomId" defaultValue={one(sp.c_room) || catPreview.freeRooms[0]?.id} className={input}>{catPreview.freeRooms.map((x) => <option key={x.id} value={x.id}>{x.number}</option>)}</select></Field>
+                  <Field label="Reason for the change"><input name="reason" required minLength={3} maxLength={200} className={input} /></Field>
+                  <button className={btn}>Change category</button>
                 </form>
               </div>
             )}

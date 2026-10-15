@@ -19,23 +19,23 @@ export const messagingStatus = () => ({ configured: twilioConfig() !== null, mod
 
 export async function setConsent(db: PrismaClient, ctx: Ctx, input: unknown) {
   authorize(ctx, "guests.manage");
-  const d = z.object({ guestId: z.string().uuid(), status: z.enum(["GRANTED", "REVOKED"]), source: z.string().trim().min(2, "Say how consent was given.").max(120) }).parse(input);
+  const d = z.object({ guestId: z.string().uuid(), status: z.enum(["GRANTED", "REVOKED"]), source: z.string().trim().min(2, "Say how consent was given.").max(120), channel: z.enum(["WHATSAPP", "EMAIL"]).default("WHATSAPP") }).parse(input);
   return withTenant(db, ctx.tenantId, async (tx) => {
     const guest = await tx.guest.findFirst({ where: { id: d.guestId } });
     if (!guest) throw new AppError("NOT_FOUND", "Guest not found.");
     const row = await tx.guestConsent.upsert({
-      where: { guestId_channel: { guestId: d.guestId, channel: "WHATSAPP" } },
-      create: { tenantId: ctx.tenantId, guestId: d.guestId, status: d.status, source: d.source, recordedBy: ctx.userId },
+      where: { guestId_channel: { guestId: d.guestId, channel: d.channel } },
+      create: { tenantId: ctx.tenantId, guestId: d.guestId, channel: d.channel, status: d.status, source: d.source, recordedBy: ctx.userId },
       update: { status: d.status, source: d.source, recordedBy: ctx.userId, at: new Date() },
     });
-    await audit(tx, ctx, { action: `consent.whatsapp.${d.status.toLowerCase()}`, entityType: "Guest", entityId: d.guestId, after: { source: d.source } });
+    await audit(tx, ctx, { action: `consent.${d.channel.toLowerCase()}.${d.status.toLowerCase()}`, entityType: "Guest", entityId: d.guestId, after: { source: d.source } });
     return row;
   });
 }
 
-export async function getConsent(db: PrismaClient, ctx: Ctx, guestId: string) {
+export async function getConsent(db: PrismaClient, ctx: Ctx, guestId: string, channel: "WHATSAPP" | "EMAIL" = "WHATSAPP") {
   authorize(ctx, "guests.view");
-  return withTenant(db, ctx.tenantId, (tx) => tx.guestConsent.findUnique({ where: { guestId_channel: { guestId, channel: "WHATSAPP" } } }));
+  return withTenant(db, ctx.tenantId, (tx) => tx.guestConsent.findUnique({ where: { guestId_channel: { guestId, channel } } }));
 }
 
 // ---------- templates ----------
