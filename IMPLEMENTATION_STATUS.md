@@ -157,6 +157,5 @@ Also fixed: the booking form rejected every percentage discount because of a bro
 ### Limits (honest list)
 - Logo and photos are https links; there is no file upload (needs storage).
 - GSTIN and registration are shown on the profile but changed under GST and tax, which needs a reason for each change.
-- A guest is chosen a plan or gets the best applicable one; a stay extended later is not repriced from a plan.
+- A booking uses the plan chosen on the form or the best applicable one; a stay extended later is not repriced from a plan.
 - Archiving a room removes it from historical occupancy denominators in analytics (they use today's active rooms).
-- Free-text category names with trailing differences are compared case-insensitively but not fuzzy-matched.
