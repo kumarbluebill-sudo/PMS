@@ -13,7 +13,8 @@ export default function ImportRooms() {
         </Card>
         <Card title="Format">
           <p className="text-sm text-slate-600">Columns: <code>room_number</code>, <code>category</code>, <code>building</code>, <code>floor</code>. Category, building and floor must already exist (see Room types and Buildings &amp; floors). Building and floor are optional.</p>
-          <p className="mt-3 text-sm"><a className="text-brand-700 underline" href="/app/rooms/import/template">Download CSV template</a></p>
+          {/* A file download from a route handler, so a plain anchor is right. */}
+          <p className="mt-3 text-sm"><a className="text-brand-700 underline" href="/app/rooms/import/template" download>Download CSV template</a></p>
         </Card>
       </div>
     </>
