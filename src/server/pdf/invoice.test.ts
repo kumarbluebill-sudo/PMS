@@ -46,3 +46,39 @@ describe("renderInvoicePdf", () => {
     expect((await renderInvoicePdf(inv)).length).toBeGreaterThan(1000);
   });
 });
+
+import { inflateSync } from "node:zlib";
+
+/** Concatenates the decompressed content streams so the drawn text can be searched. */
+function inflateStreams(bytes: Uint8Array): string {
+  const buf = Buffer.from(bytes);
+  const src = buf.toString("latin1");
+  let out = "";
+  for (const m of src.matchAll(/stream\r?\n/g)) {
+    const start = m.index! + m[0].length;
+    const end = src.indexOf("endstream", start);
+    try { out += inflateSync(buf.subarray(start, end)).toString("latin1"); } catch { /* not a flate stream */ }
+  }
+  return out;
+}
+
+describe("invoice themes", () => {
+  // The content stream carries text as hex strings; the same figures must appear whatever the theme.
+  const hexOf = (s: string) => Buffer.from(s, "latin1").toString("hex").toUpperCase();
+  it("renders every theme and font with the same totals and legal fields", async () => {
+    const { INVOICE_THEMES, INVOICE_FONTS, resolveInvoiceStyle } = await import("@/server/domain/invoiceTheme");
+    const combos = [
+      ...INVOICE_THEMES.map((theme) => resolveInvoiceStyle({ theme })),
+      ...INVOICE_FONTS.map((font) => resolveInvoiceStyle({ theme: "MODERN", font, accent: "#ffcc00" })),
+    ];
+    for (const style of combos) {
+      const bytes = await renderInvoicePdf({ ...base("TAX_INVOICE", 3), style });
+      const doc = await PDFDocument.load(bytes);
+      expect(doc.getPageCount()).toBe(1);
+      const raw = inflateStreams(bytes);
+      const hasText = (t: string) => raw.toUpperCase().includes(hexOf(t)) || raw.includes(t);
+      expect(hasText("15,120.00"), `${style.theme}/${style.font} total`).toBe(true);
+      expect(hasText("33ABCDE1234F1Z5"), `${style.theme}/${style.font} gstin`).toBe(true);
+    }
+  });
+});

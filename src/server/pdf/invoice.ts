@@ -1,4 +1,5 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import { resolveInvoiceStyle, type InvoiceFont, type InvoiceStyle } from "@/server/domain/invoiceTheme";
 
 type Party = { name?: string; gstin?: string | null; stateCode?: string | null; address?: string | null; registered?: boolean };
 export type PdfLine = {
@@ -20,6 +21,8 @@ export type PdfInvoice = {
   headerLine?: string | null;
   paymentInstructions?: string | null;
   signatureLabel?: string | null;
+  /** Colours, type and spacing only. Defaults to the classic theme. */
+  style?: InvoiceStyle;
   lines: PdfLine[];
   totals: { netMinor: number; cgstMinor: number; sgstMinor: number; igstMinor: number; cessMinor: number; grossMinor: number };
 };
@@ -59,11 +62,19 @@ function wrap(text: string, font: PDFFont, size: number, width: number): string[
 }
 
 /** A4 invoice / bill of supply / credit note / debit note drawn from saved, immutable document data. */
+const FONTS: Record<InvoiceFont, [StandardFonts, StandardFonts]> = {
+  HELVETICA: [StandardFonts.Helvetica, StandardFonts.HelveticaBold],
+  TIMES: [StandardFonts.TimesRoman, StandardFonts.TimesRomanBold],
+  COURIER: [StandardFonts.Courier, StandardFonts.CourierBold],
+};
+
 export async function renderInvoicePdf(inv: PdfInvoice): Promise<Uint8Array> {
+  const S = inv.style ?? resolveInvoiceStyle();
   const doc = await PDFDocument.create();
-  const font = await doc.embedFont(StandardFonts.Helvetica);
-  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
-  const W = 595, H = 842, M = 40, size = 9;
+  const font = await doc.embedFont(FONTS[S.font][0]);
+  const bold = await doc.embedFont(FONTS[S.font][1]);
+  const W = 595, H = 842, M = 40, size = S.baseSize;
+  const accent = rgb(...S.accent), ruleCol = rgb(...S.rule);
   const showTax = inv.kind !== "BILL_OF_SUPPLY";
   const cols = showTax
     ? [{ k: "d", t: "Description", w: 150 }, { k: "s", t: "SAC", w: 45 }, { k: "n", t: "Taxable", w: 62 }, { k: "c", t: "CGST", w: 52 }, { k: "g", t: "SGST", w: 52 }, { k: "i", t: "IGST", w: 52 }, { k: "x", t: "Cess", w: 40 }, { k: "t", t: "Total", w: 62 }]
@@ -75,18 +86,19 @@ export async function renderInvoicePdf(inv: PdfInvoice): Promise<Uint8Array> {
   const newPage = () => {
     page = doc.addPage([W, H]);
     pages.push(page);
+    if (S.topBar) page.drawRectangle({ x: 0, y: H - 10, width: W, height: 10, color: ruleCol });
     y = H - M;
   };
-  const text = (s: string, x: number, yy: number, f = font, sz = size) => page.drawText(pdfSafe(s), { x, y: yy, size: sz, font: f, color: rgb(0.1, 0.1, 0.1) });
+  const text = (s: string, x: number, yy: number, f = font, sz = size, color = rgb(0.1, 0.1, 0.1)) => page.drawText(pdfSafe(s), { x, y: yy, size: sz, font: f, color });
   const right = (s: string, xRight: number, yy: number, f = font, sz = size) => {
     const t = pdfSafe(s);
     page.drawText(t, { x: xRight - f.widthOfTextAtSize(t, sz), y: yy, size: sz, font: f, color: rgb(0.1, 0.1, 0.1) });
   };
-  const rule = (yy: number) => page.drawLine({ start: { x: M, y: yy }, end: { x: W - M, y: yy }, thickness: 0.5, color: rgb(0.6, 0.6, 0.6) });
+  const rule = (yy: number) => page.drawLine({ start: { x: M, y: yy }, end: { x: W - M, y: yy }, thickness: S.topBar ? 0.8 : 0.5, color: ruleCol });
 
   newPage();
-  text(TITLES[inv.kind] ?? inv.kind, M, y - 14, bold, 16);
-  text(inv.number, M, y - 30, bold, 11);
+  text(TITLES[inv.kind] ?? inv.kind, M, y - 14, bold, 16, accent);
+  text(inv.number, M, y - 30, bold, 11, accent);
   text(`Date: ${inv.issuedDate}`, M, y - 44);
   let ly = y - 58;
   if (inv.originalNumber) { text(`Against invoice: ${inv.originalNumber}`, M, ly); ly -= 12; }
@@ -110,6 +122,7 @@ export async function renderInvoicePdf(inv: PdfInvoice): Promise<Uint8Array> {
   y -= 8;
 
   const header = () => {
+    if (S.headFill) page.drawRectangle({ x: M - 3, y: y - 9, width: W - 2 * M + 6, height: 19, color: rgb(...S.headFill) });
     let x = M;
     for (const c of cols) {
       if (c.k === "d" || c.k === "s") text(c.t, x, y, bold, 8);
@@ -138,7 +151,7 @@ export async function renderInvoicePdf(inv: PdfInvoice): Promise<Uint8Array> {
       else right(vals[c.k], x + c.w, y);
       x += c.w;
     }
-    y -= Math.max(1, desc.length) * 11 + 3;
+    y -= Math.max(1, desc.length) * 11 + S.rowGap;
   }
   rule(y + 6);
   y -= 8;

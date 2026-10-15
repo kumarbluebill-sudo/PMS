@@ -377,7 +377,8 @@ export async function folioDetail(db: PrismaClient, ctx: Ctx, folioId: string) {
     const payIds = folio.entries.map((e) => e.paymentId).filter((x): x is string => !!x);
     const pays = payIds.length ? await tx.payment.findMany({ where: { id: { in: payIds } }, select: { id: true, method: true, reference: true } }) : [];
     const paymentRefs = new Map(pays.map((x) => [x.id, `${x.method.replace("_", " ").toLowerCase()}${x.reference ? ` · ${x.reference}` : ""}`]));
-    return { folio, balance, paid, refunded, billed, paymentStatus, summary, siblings, paymentRefs };
+    const property = await tx.property.findFirst({ where: { id: propertyId }, select: { name: true, legalName: true, address: true, gstin: true } });
+    return { folio, balance, paid, refunded, billed, paymentStatus, summary, siblings, paymentRefs, property };
   });
 }
 

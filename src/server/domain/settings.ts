@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { INVOICE_FONTS, INVOICE_THEMES, THEME_LABELS, isHexColour } from "./invoiceTheme";
 import type { Permission } from "@/server/auth/permissions";
 import { BOOKING_SOURCES } from "./quote";
 import { ISSUE_CATEGORIES, CATEGORY_LABELS } from "./roomBlock";
@@ -78,6 +79,9 @@ export const DEFS = {
   "billing.paymentInstructions": def({ scope: "PROPERTY", perm: "settings.manage", group: "billing", label: "Payment instructions", control: "textarea", help: "Bank or UPI details printed on invoices.", schema: text(500), default: "" }),
   "billing.signatureLabel": def({ scope: "PROPERTY", perm: "settings.manage", group: "billing", label: "Signature line label", control: "text", help: "Printed above a signature line, e.g. Authorised signatory.", schema: text(60), default: "" }),
   "billing.receiptLayout": def({ scope: "PROPERTY", perm: "settings.manage", group: "billing", label: "Receipt PDF layout", control: "select", options: [{ value: "A4", label: "A4 page" }, { value: "THERMAL", label: "Receipt printer (80 mm)" }], schema: z.enum(["A4", "THERMAL"]), default: "A4" as const }),
+  "billing.theme": def({ scope: "PROPERTY", perm: "settings.manage", group: "billing", label: "Invoice theme", control: "select", help: "Changes how invoices look, never their amounts or tax lines. Preview it under Invoice design.", options: INVOICE_THEMES.map((t) => ({ value: t, label: THEME_LABELS[t].name })), schema: z.enum(INVOICE_THEMES), default: "CLASSIC" as const }),
+  "billing.accentColor": def({ scope: "PROPERTY", perm: "settings.manage", group: "billing", label: "Invoice accent colour", control: "text", help: "Optional, e.g. #0f766e. Used by the coloured themes only; leave blank for the theme colour.", schema: z.string().trim().refine((v) => v === "" || isHexColour(v), "Use a colour like #0f766e."), default: "" }),
+  "billing.font": def({ scope: "PROPERTY", perm: "settings.manage", group: "billing", label: "Invoice typeface", control: "select", options: [{ value: "", label: "Theme default" }, { value: "HELVETICA", label: "Helvetica (sans-serif)" }, { value: "TIMES", label: "Times (serif)" }, { value: "COURIER", label: "Courier (monospace)" }], schema: z.enum(["", ...INVOICE_FONTS]), default: "" as const }),
   "billing.enabledPaymentMethods": def({ scope: "PROPERTY", perm: "settings.manage", group: "billing", label: "Payment methods in use", control: "multi", options: opts(PAYMENT_METHODS), schema: z.array(z.enum(PAYMENT_METHODS)).min(1, "Keep at least one payment method."), default: [...PAYMENT_METHODS] }),
   "billing.taxInclusiveDefault": def({ scope: "PROPERTY", perm: "settings.manage", group: "billing", label: "Charges entered include GST by default", control: "checkbox", schema: z.boolean(), default: false }),
   "billing.maxDiscountPercent": def({ scope: "PROPERTY", perm: "settings.manage", group: "billing", label: "Largest discount allowed (%)", control: "number", min: 0, max: 100, help: "Applies to booking discounts and to discounts posted on a folio.", schema: z.number().int().min(0).max(100), default: 100 }),

@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getDb } from "@/server/db/client";
 import { GST_STATES } from "@/server/domain/gst";
+import { resolveInvoiceStyle } from "@/server/domain/invoiceTheme";
 import { renderInvoicePdf } from "@/server/pdf/invoice";
 import { getCtx } from "@/server/session";
 import { getInvoice } from "@/server/services/invoicing";
@@ -20,6 +21,7 @@ export async function GET(_req: NextRequest, { params }: RouteContext<"/app/invo
     placeOfSupply: inv.placeOfSupply, placeOfSupplyName: inv.placeOfSupply ? (GST_STATES[inv.placeOfSupply] ?? null) : null,
     terms: st["billing.invoiceTerms"], footerNote: st["billing.invoiceNotes"],
     headerLine: st["billing.docHeader"], paymentInstructions: st["billing.paymentInstructions"], signatureLabel: st["billing.signatureLabel"],
+    style: resolveInvoiceStyle({ theme: st["billing.theme"], accent: st["billing.accentColor"], font: st["billing.font"] }),
     lines: inv.lines.map((l) => ({
       description: l.description, sacCode: l.sacCode, netMinor: l.netMinor, cgstMinor: l.cgstMinor, sgstMinor: l.sgstMinor,
       igstMinor: l.igstMinor, cessMinor: l.cessMinor, grossMinor: l.grossMinor,

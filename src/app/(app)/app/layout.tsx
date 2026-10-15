@@ -88,6 +88,7 @@ export default async function AppLayout({ children }: LayoutProps<"/app">) {
     ["/app/settings/permissions", "Roles and permissions", "What each role can do", "settings.view"],
     ["/app/settings/notifications", "Notification preferences", "Alerts and templates", "settings.view"],
     ["/app/settings/billing", "Invoice settings", "Layout, numbering, payment methods", "settings.view"],
+    ["/app/settings/invoice-design", "Invoice design", "Themes and live preview", "settings.view"],
     ["/app/settings/tax", "GST and tax", "Rates and registration", "tax.manage"],
     ["/app/settings", "All settings", "Everything else", "settings.view"],
   ] as [string, string, string, Permission][]).filter(([, , , perm]) => can(perm)).map(([href, label, hint]) => ({ href, label, hint }));
