@@ -21,7 +21,7 @@ export function ReservationActions({ id, status, ctx, back, only }: { id: string
           <input type="hidden" name="id" value={id} />
           <input type="hidden" name="kind" value={b.kind} />
           <input type="hidden" name="back" value={back} />
-          {b.kind === "cancel" && <input type="hidden" name="reason" value="Cancelled by staff" />}
+          {b.kind === "cancel" && <input name="reason" required minLength={3} placeholder="Cancel reason" aria-label="Reason for cancelling" className="mr-1 w-32 rounded border border-slate-300 p-1 text-xs" />}
           {b.kind === "checkout" && roleHasPermission(ctx.role, "billing.waive", ctx.extra) && (
             <input name="waive" placeholder="Waive balance: reason" className="mr-1 w-36 rounded border border-slate-300 p-1 text-xs" aria-label="Reason to waive outstanding balance" />
           )}

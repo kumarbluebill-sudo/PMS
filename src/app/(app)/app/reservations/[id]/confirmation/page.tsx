@@ -29,7 +29,7 @@ export default async function Confirmation({ params, searchParams }: PageProps<"
         <div className="flex flex-wrap items-center gap-2">
           <PrintButton />
           <Link href={`/app/reservations/${first.id}`} className="text-sm underline">View reservation</Link>
-          <Link href="/app/reservations" className="text-sm underline">New booking</Link>
+          <Link href="/app/reservations/new" className="text-sm underline">New booking</Link>
           <Link href="/app/dashboard" className="text-sm underline">Room board</Link>
         </div>
       </div>

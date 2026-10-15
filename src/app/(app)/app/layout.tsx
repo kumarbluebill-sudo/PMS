@@ -92,8 +92,8 @@ export default async function AppLayout({ children }: LayoutProps<"/app">) {
     ["/app/settings", "All settings", "Everything else", "settings.view"],
   ] as [string, string, string, Permission][]).filter(([, , , perm]) => can(perm)).map(([href, label, hint]) => ({ href, label, hint }));
   const quick: QuickAction[] = ([
-    ["/app/reservations", "New reservation", "reservations.create", true],
-    [`/app/reservations?arrival=${businessDate}`, "Walk-in check-in", "frontdesk.checkin", false],
+    ["/app/reservations/new", "New reservation", "reservations.create", true],
+    [`/app/reservations/new?arrival=${businessDate}`, "Walk-in check-in", "frontdesk.checkin", false],
     ["/app/search", "Guest search", "reservations.view", false],
     ["/app/operations#unassigned", "Room allocation", "reservations.modify", false],
     ["/app/operations#departures", "Check-out", "frontdesk.checkout", false],

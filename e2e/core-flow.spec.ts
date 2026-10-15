@@ -90,7 +90,7 @@ test("owner registers, enrols MFA, runs a stay end to end, and it is audited", a
 
   // Reservation: check availability and price first, then save (the guest is picked from the list).
   const plus = (iso: string, n: number) => new Date(Date.parse(iso + "T00:00:00Z") + n * 86_400_000).toISOString().slice(0, 10);
-  await page.goto("/app/reservations");
+  await page.goto("/app/reservations/new");
   const arrival = await page.getByLabel("Check-in").inputValue(); // defaults to today at the property
   await page.getByLabel("Check-out").fill(plus(arrival, 2));
   await page.getByRole("button", { name: "Check availability and price" }).click();
@@ -103,7 +103,7 @@ test("owner registers, enrols MFA, runs a stay end to end, and it is audited", a
   await expect(page.getByRole("heading", { name: "Booking confirmation" })).toBeVisible();
   await expect(page.getByText(/MK-[0-9A-F]{8}/).first()).toBeVisible();
   await expect(page.getByText("Estimated total")).toBeVisible();
-  await page.goto("/app/reservations");
+  await page.goto("/app/reservations/new");
   await expect(page.getByRole("cell", { name: "Asha Verma" })).toBeVisible();
 
   // A second booking for the only room on overlapping dates is shown as unavailable before it can be saved.
@@ -177,7 +177,7 @@ test("owner registers, enrols MFA, runs a stay end to end, and it is audited", a
   await expect(page.getByText("dirty").first()).toBeVisible();
 
   // Guest feedback: staff create a private link, the guest answers without logging in, the link works once.
-  await page.goto("/app/reservations");
+  await page.goto("/app/reservations/new");
   await page.getByRole("link", { name: /MK-[0-9A-F]{8}/ }).first().click();
   await page.getByRole("button", { name: "Create feedback link" }).click();
   const feedbackUrl = await page.getByLabel(/Send this link to the guest/).inputValue();

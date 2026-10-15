@@ -260,6 +260,7 @@ model Reservation {
   idVerifiedAt            DateTime?
   idVerifiedBy            String?   @db.Uuid
   noShowAt                DateTime?
+  externalRef             String? // OTA or channel booking reference
 
   property    Property @relation(fields: [propertyId], references: [id])
   guest       Guest    @relation(fields: [guestId], references: [id])
@@ -272,6 +273,7 @@ model Reservation {
   @@unique([tenantId, reference])
   @@index([tenantId, propertyId, arrival])
   @@index([tenantId, groupRef])
+  @@index([tenantId, externalRef])
   @@map("reservations")
 }
 
@@ -283,6 +285,7 @@ model ReservationStatusHistory {
   toStatus      String
   changedBy     String   @db.Uuid
   changedAt     DateTime @default(now())
+  reason        String?
 
   reservation Reservation @relation(fields: [reservationId], references: [id])
 

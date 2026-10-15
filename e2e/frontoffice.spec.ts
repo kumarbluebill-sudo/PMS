@@ -43,7 +43,7 @@ test("front office: arrival to check-in to checkout control, with command centre
   await expect(page.getByText("Asha Verma")).toBeVisible();
 
   const plus = (iso: string, n: number) => new Date(Date.parse(iso + "T00:00:00Z") + n * 86_400_000).toISOString().slice(0, 10);
-  await page.goto("/app/reservations");
+  await page.goto("/app/reservations/new");
   const arrival = await page.getByLabel("Check-in").inputValue();
   await page.getByLabel("Check-out").fill(plus(arrival, 2));
   await page.getByRole("button", { name: "Check availability and price" }).click();

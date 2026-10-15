@@ -39,7 +39,7 @@ function RowActions({ row, ctx, back, date }: { row: BoardRow; ctx: Ctx; back: s
       )}
       {live && s.reservationStatus && <ReservationActions id={s.reservationId} status={s.reservationStatus} ctx={ctx} back={back} only={["checkin", "checkout"]} />}
       {(row.status === "AVAILABLE" || row.status === "RESERVED") && can("reservations.create") && (
-        <Link href={`/app/reservations?roomTypeId=${row.roomTypeId}&roomId=${row.roomId}&arrival=${date}`} className={btnGhost}>New booking</Link>
+        <Link href={`/app/reservations/new?roomTypeId=${row.roomTypeId}&roomId=${row.roomId}&arrival=${date}`} className={btnGhost}>New booking</Link>
       )}
       {(row.status === "OUT_OF_ORDER" || row.status === "MAINTENANCE") && can("rooms.view") && (
         <Link href={row.maintenanceId ? `/app/maintenance/${row.maintenanceId}` : "/app/maintenance"} className={btnGhost}>View reason</Link>

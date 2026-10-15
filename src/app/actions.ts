@@ -189,7 +189,7 @@ export async function addBookingAction(fd: FormData) {
       roomTypeId: str(fd.get("roomTypeId")), roomId: str(fd.get("roomId")) || undefined,
       arrival: str(fd.get("arrival")), departure: str(fd.get("departure")),
       rooms: num(fd.get("rooms"), 1), adults: num(fd.get("adults"), 1), children: num(fd.get("children"), 0),
-      source: str(fd.get("source")) || "WALK_IN", companyName: str(fd.get("companyName")) || undefined, agentName: str(fd.get("agentName")) || undefined,
+      source: str(fd.get("source")) || "WALK_IN", companyName: str(fd.get("companyName")) || undefined, agentName: str(fd.get("agentName")) || undefined, externalRef: str(fd.get("externalRef")) || undefined,
       notes: str(fd.get("notes")) || undefined, status: str(fd.get("status")) || "CONFIRMED",
       discountPercentBp: percentToBp(str(fd.get("discountPct"))), discountAmountMinor: rupeesOpt(str(fd.get("discountAmt"))),
       discountReason: str(fd.get("discountReason")) || undefined,
@@ -201,7 +201,7 @@ export async function addBookingAction(fd: FormData) {
     error = toSafeError(e).message;
   }
   revalidatePath("/app", "layout");
-  if (error) redirect(`/app/reservations?${keep}&error=${encodeURIComponent(error)}`);
+  if (error) redirect(`/app/reservations/new?${keep}&error=${encodeURIComponent(error)}`);
   redirect(dest!);
 }
 

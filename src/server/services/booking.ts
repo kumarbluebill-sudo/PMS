@@ -169,6 +169,7 @@ const bookingSchema = z
     source: z.enum([...BOOKING_SOURCES, ...LEGACY_SOURCES]).default("WALK_IN"),
     companyName: z.string().trim().max(120).optional(),
     agentName: z.string().trim().max(120).optional(),
+    externalRef: z.string().trim().max(60).optional(),
     notes: z.string().trim().max(1000).optional(),
     ratePlan: z.literal("STANDARD").default("STANDARD"),
     discountReason: z.string().trim().max(200).optional(),
@@ -287,7 +288,7 @@ export async function createBooking(
           data: {
             tenantId: ctx.tenantId, propertyId, reference: newReference(st["reservation.referencePrefix"]), guestId: guestId!, roomTypeId: d.roomTypeId,
             source: d.source, arrival: toDate(d.arrival), departure: toDate(d.departure), adults, children,
-            notes: d.notes, status: d.status, createdBy: ctx.userId, groupRef, companyName: d.companyName, agentName: d.agentName,
+            notes: d.notes, status: d.status, createdBy: ctx.userId, groupRef, companyName: d.companyName, agentName: d.agentName, externalRef: d.externalRef || null,
             ratePlan: d.ratePlan, agreedRateMinor: discounted ? quote.rateMinor : null, discountReason: discounted ? d.discountReason : null,
             quotedTotalMinor: perRoomTotal,
           },

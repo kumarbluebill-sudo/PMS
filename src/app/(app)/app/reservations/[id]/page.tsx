@@ -5,7 +5,7 @@ import { roleHasPermission } from "@/server/auth/permissions";
 import { getDb } from "@/server/db/client";
 import { getCtx } from "@/server/session";
 import { listRooms } from "@/server/services/rooms";
-import { getReservation } from "@/server/services/reservations";
+import { getReservation, reservationTimeline } from "@/server/services/reservations";
 import ReservationMessages from "../../messages/ReservationMessages";
 import { getConsent, messagingStatus } from "@/server/services/messaging";
 import { FeedbackLinkButton } from "../../FeedbackLinkButton";
@@ -16,7 +16,7 @@ export default async function StayDetail({ params, searchParams }: PageProps<"/a
   const { error, ok } = await searchParams;
   const ctx = await getCtx();
   const db = getDb();
-  const r = await getReservation(db, ctx, id);
+  const [r, timeline] = await Promise.all([getReservation(db, ctx, id), reservationTimeline(db, ctx, id)]);
   const canModify = roleHasPermission(ctx.role, "reservations.modify", ctx.extra) && (r.status === "CONFIRMED" || r.status === "CHECKED_IN");
   const rooms = canModify ? await listRooms(db, ctx) : [];
   const back = `/app/reservations/${r.id}`;
@@ -34,7 +34,7 @@ export default async function StayDetail({ params, searchParams }: PageProps<"/a
             <dt className="text-slate-500">Status</dt><dd><Badge value={r.status} /></dd>
             <dt className="text-slate-500">Room</dt><dd>{room ? `${room.number} (${room.roomType.name})` : "—"}</dd>
             <dt className="text-slate-500">Guests</dt><dd>{r.adults} adult(s), {r.children} child(ren)</dd>
-            <dt className="text-slate-500">Source</dt><dd>{r.source}</dd>
+            <dt className="text-slate-500">Source</dt><dd>{r.source}{r.externalRef ? ` · OTA ref ${r.externalRef}` : ""}</dd>
             <dt className="text-slate-500">Guest</dt><dd>{r.guest.name}{r.guest.phone ? ` · ${r.guest.phone}` : ""}{r.guest.email ? ` · ${r.guest.email}` : ""}</dd>
             {r.notes && (<><dt className="text-slate-500">Notes</dt><dd>{r.notes}</dd></>)}
           </dl>
@@ -43,14 +43,17 @@ export default async function StayDetail({ params, searchParams }: PageProps<"/a
             <Link href="/app/dashboard" className={btnGhost}>Back to room board</Link>
           </div>
         </Card>
-        <Card title="History">
-          <ul className="space-y-1 text-sm">
-            {r.history.map((h) => (
-              <li key={h.id}>
-                <Badge value={h.toStatus} /> <span className="text-xs text-slate-500">{h.changedAt.toISOString().slice(0, 16).replace("T", " ")} UTC</span>
+        <Card title="Change history">
+          <ol className="space-y-2 text-sm">
+            {timeline.map((t, i) => (
+              <li key={i}>
+                <span className="font-medium text-slate-900">{t.what}</span>
+                <span className="block text-xs text-slate-600">{t.at.toISOString().slice(0, 16).replace("T", " ")} UTC · {t.by}{t.detail ? ` · ${t.detail}` : ""}</span>
+                {t.reason && <span className="block text-xs text-slate-700">Reason: {t.reason}</span>}
               </li>
             ))}
-          </ul>
+            {timeline.length === 0 && <li className="text-slate-600">No changes recorded.</li>}
+          </ol>
         </Card>
         {canMessage && (
           <ReservationMessages reservationId={r.id} guestId={r.guestId} back={back} consent={consent ? { status: consent.status, source: consent.source } : null} hasPhone={!!r.guest.phone} testMode={!messagingStatus().configured} />

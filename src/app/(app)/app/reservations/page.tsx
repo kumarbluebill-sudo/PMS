@@ -1,229 +1,146 @@
 import Link from "next/link";
-import { addBookingAction } from "@/app/actions";
-import { Badge, btn, btnGhost, Card, ErrorBanner, Field, fmtDate, inr, input, PageHeader } from "@/app/ui";
-import { roleHasPermission } from "@/server/auth/permissions";
+import { Badge, btn, btnGhost, Card, EmptyState, fmtDate, inr, input, PageHeader } from "@/app/ui";
 import { getDb } from "@/server/db/client";
-import { AppError } from "@/server/errors";
 import { BOOKING_SOURCES, SOURCE_LABELS } from "@/server/domain/quote";
 import { getCtx } from "@/server/session";
-import { availabilityByType, quoteStay, ID_TYPES, type Quote } from "@/server/services/booking";
-import { listRoomTypes } from "@/server/services/rooms";
-import { searchGuests } from "@/server/services/guests";
-import { listReservations } from "@/server/services/reservations";
-import { propertyToday } from "@/server/services/roomBlocks";
-import { settingsFor } from "@/server/services/settings";
+import { roleHasPermission } from "@/server/auth/permissions";
+import { listRoomTypes, listRooms } from "@/server/services/rooms";
+import { listReservationsPage, RESERVATION_SORTS, type ReservationListFilter } from "@/server/services/reservations";
 import { ReservationActions } from "../ReservationActions";
 
 const one = (v: string | string[] | undefined) => (typeof v === "string" ? v : "");
-const DAY = /^\d{4}-\d{2}-\d{2}$/;
+const STATUSES = ["TENTATIVE", "CONFIRMED", "CHECKED_IN", "CHECKED_OUT", "CANCELLED", "NO_SHOW"];
+const PAYMENTS = [["UNPAID", "Unpaid"], ["PARTIAL", "Part paid"], ["PAID", "Paid"]] as const;
+const SORT_LABELS: Record<(typeof RESERVATION_SORTS)[number], string> = { arrival: "Arrival", departure: "Departure", created: "Booked on", guest: "Guest name" };
 
 export default async function Reservations({ searchParams }: PageProps<"/app/reservations">) {
   const sp = await searchParams;
   const ctx = await getCtx();
   const db = getDb();
   const can = (p: Parameters<typeof roleHasPermission>[1]) => roleHasPermission(ctx.role, p, ctx.extra);
-  const st = await settingsFor(db, ctx);
-  const [list, types, guests, today] = await Promise.all([
-    listReservations(db, ctx),
-    listRoomTypes(db, ctx),
-    can("guests.view") ? searchGuests(db, ctx) : Promise.resolve([]),
-    propertyToday(db, ctx),
-  ]);
 
-  const v = {
-    roomTypeId: one(sp.roomTypeId) || types[0]?.id || "",
-    roomId: one(sp.roomId),
-    arrival: DAY.test(one(sp.arrival)) ? one(sp.arrival) : today,
-    departure: DAY.test(one(sp.departure)) ? one(sp.departure) : "",
-    rooms: one(sp.rooms) || "1",
-    adults: one(sp.adults) || "1",
-    children: one(sp.children) || "0",
-    discountPct: one(sp.discountPct),
-    discountAmt: one(sp.discountAmt),
+  const sort = (RESERVATION_SORTS as readonly string[]).includes(one(sp.sort)) ? (one(sp.sort) as ReservationListFilter["sort"]) : "arrival";
+  const filter: ReservationListFilter = {
+    q: one(sp.q), status: one(sp.status) || undefined, roomTypeId: one(sp.roomTypeId) || undefined, source: one(sp.source) || undefined,
+    roomId: one(sp.roomId) || undefined, arrivalFrom: one(sp.arrivalFrom), arrivalTo: one(sp.arrivalTo),
+    departureFrom: one(sp.departureFrom), departureTo: one(sp.departureTo),
+    payment: (["UNPAID", "PARTIAL", "PAID"] as const).find((p) => p === one(sp.payment)),
+    sort, dir: one(sp.dir) === "desc" ? "desc" : "asc", page: Number(one(sp.page)) || 1,
   };
+  const [res, types, rooms] = await Promise.all([listReservationsPage(db, ctx, filter), listRoomTypes(db, ctx), listRooms(db, ctx)]);
 
-  // Step 2: availability and price, computed on the server from the saved rates and tax rules.
-  let quote: Quote | null = null;
-  let byType: Awaited<ReturnType<typeof availabilityByType>> = [];
-  let quoteError: string | null = null;
-  if (one(sp.check) && v.departure && v.roomTypeId) {
-    try {
-      byType = await availabilityByType(db, ctx, v.arrival, v.departure);
-      const pct = v.discountPct.trim() ? Math.round(Number(v.discountPct) * 100) : undefined;
-      const amtMatch = /^(\d{1,9})(?:\.(\d{1,2}))?$/.exec(v.discountAmt.trim());
-      quote = await quoteStay(db, ctx, {
-        roomTypeId: v.roomTypeId, arrival: v.arrival, departure: v.departure,
-        rooms: Number(v.rooms) || 1, adults: Number(v.adults) || 1, children: Number(v.children) || 0,
-        ...(pct && Number.isFinite(pct) ? { discountPercentBp: pct } : {}),
-        ...(amtMatch ? { discountAmountMinor: Number(amtMatch[1]) * 100 + Number((amtMatch[2] ?? "").padEnd(2, "0") || "0") } : {}),
-      });
-    } catch (e) {
-      quoteError = e instanceof AppError ? e.message : "Check the dates and numbers entered.";
-    }
-  }
-  const discounted = !!quote && quote.discountPerNightMinor > 0;
-  const canBook = !!quote && quote.available >= quote.rooms && can("reservations.create");
+  const active: [string, string][] = Object.entries(filter).filter(([k, v]) => v && !["sort", "dir", "page"].includes(k)).map(([k, v]) => [k, String(v)]);
+  const href = (over: Record<string, string | number | undefined>) => {
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries({ ...Object.fromEntries(active), sort, dir: filter.dir, ...over })) if (v !== undefined && String(v) !== "") p.set(k, String(v));
+    return `/app/reservations?${p}`;
+  };
+  const from = res.total === 0 ? 0 : (res.page - 1) * res.pageSize + 1;
+  const to = Math.min(res.total, res.page * res.pageSize);
 
   return (
     <>
-      <PageHeader title="Reservations" subtitle="Check availability, review the price, then save. Check-out day is not a night." />
-      <ErrorBanner message={typeof sp.error === "string" ? sp.error : quoteError ?? undefined} />
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="min-w-0 space-y-4">
-          <Card title="1. Dates and rooms">
-            <form method="get" className="space-y-3">
-              <input type="hidden" name="check" value="1" />
-              {v.roomId && <input type="hidden" name="roomId" value={v.roomId} />}
-              <div className="grid grid-cols-2 gap-2">
-                <Field label="Check-in"><input name="arrival" type="date" min={today} defaultValue={v.arrival} required className={input} /></Field>
-                <Field label="Check-out"><input name="departure" type="date" min={today} defaultValue={v.departure} required className={input} /></Field>
-              </div>
-              <Field label="Room type">
-                <select name="roomTypeId" defaultValue={v.roomTypeId} required className={input}>
-                  {types.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                </select>
-              </Field>
-              <div className="grid grid-cols-3 gap-2">
-                <Field label="Rooms"><input name="rooms" type="number" min={1} max={20} defaultValue={v.rooms} className={input} /></Field>
-                <Field label="Adults"><input name="adults" type="number" min={1} defaultValue={v.adults} className={input} /></Field>
-                <Field label="Children"><input name="children" type="number" min={0} defaultValue={v.children} className={input} /></Field>
-              </div>
-              {can("billing.discount") && (
-                <div className="grid grid-cols-2 gap-2">
-                  <Field label="Discount %"><input name="discountPct" inputMode="decimal" defaultValue={v.discountPct} className={input} /></Field>
-                  <Field label="or ₹ off per night"><input name="discountAmt" inputMode="decimal" defaultValue={v.discountAmt} className={input} /></Field>
-                </div>
-              )}
-              {v.roomId && <p className="text-xs text-slate-600">A specific room was chosen on the room board; it will be used if it is free.</p>}
-              <button className={btn} disabled={!types.length}>Check availability and price</button>
-              {!types.length && <p className="text-xs text-slate-500">Add a room type first.</p>}
-            </form>
-          </Card>
-
-          {quote && (
-            <Card title="2. Availability and price">
-              <p className={`mb-2 rounded px-2 py-1 text-sm font-medium ${quote.available >= quote.rooms ? "bg-green-50 text-green-900" : "bg-red-50 text-red-900"}`} role="status">
-                {quote.available >= quote.rooms
-                  ? `${quote.available} ${quote.roomType} room(s) available for ${quote.nights} night(s).`
-                  : quote.available === 0
-                    ? `No ${quote.roomType} room is available for those dates.`
-                    : `Only ${quote.available} ${quote.roomType} room(s) available; you asked for ${quote.rooms}.`}
-              </p>
-              <dl className="grid grid-cols-[1fr_auto] gap-y-1 text-sm">
-                <dt>Rate per night{discounted ? " (after discount)" : ""}</dt><dd>{inr(quote.rateMinor)}</dd>
-                {discounted && (<><dt className="text-slate-500">Base rate</dt><dd className="text-slate-500 line-through">{inr(quote.baseRateMinor)}</dd></>)}
-                <dt>{quote.nights} night(s) × {quote.rooms} room(s)</dt><dd>{inr(quote.subtotalMinor)}</dd>
-                <dt>{quote.taxStatus === "NOT_REGISTERED" ? "GST (not registered)" : "GST"}</dt><dd>{inr(quote.taxMinor)}</dd>
-                <dt className="font-semibold">Estimated total</dt><dd className="font-semibold">{inr(quote.totalMinor)}</dd>
-              </dl>
-              {quote.taxNote && <p className="mt-2 text-xs text-slate-600">{quote.taxNote}</p>}
-              {quote.depositRequiredMinor > 0 && <p className="mt-2 text-sm"><strong>Deposit requested:</strong> {inr(quote.depositRequiredMinor)} ({st["reservation.depositPercent"]}% of the estimate)</p>}
-              <p className="mt-2 text-xs text-slate-500">This is an estimate. The final bill is built from the folio when the stay is posted. The server recalculates everything when you save.</p>
-              {byType.length > 0 && (
-                <table className="mt-3 w-full text-left text-xs">
-                  <caption className="mb-1 text-left font-medium text-slate-700">Availability for these dates</caption>
-                  <thead className="text-slate-500"><tr><th>Room type</th><th>Free</th><th>Rate</th></tr></thead>
-                  <tbody>
-                    {byType.map((t) => <tr key={t.id}><td>{t.name}</td><td>{t.available} of {t.totalRooms}</td><td>{inr(t.baseRateMinor)}</td></tr>)}
-                  </tbody>
-                </table>
-              )}
-            </Card>
+      <PageHeader
+        title="Reservations"
+        subtitle="Search, filter and manage every booking. Amounts are in rupees and include tax."
+        actions={<>
+          <Link href="/app/reservations/calendar" className={btnGhost}>Calendar</Link>
+          {can("reservations.create") && <Link href="/app/reservations/new" className={btn}>New reservation</Link>}
+        </>}
+      />
+      <Card title="Search and filters">
+        <form method="get" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" role="search" aria-label="Filter reservations">
+          <label className="block space-y-1 sm:col-span-2"><span className="text-sm font-medium text-slate-700">Search</span>
+            <input name="q" defaultValue={filter.q} placeholder="Reference, guest, mobile, email or OTA ref" className={input} /></label>
+          <label className="block space-y-1"><span className="text-sm font-medium text-slate-700">Status</span>
+            <select name="status" defaultValue={filter.status ?? ""} className={input}><option value="">Any status</option>{STATUSES.map((s) => <option key={s} value={s}>{s.replace("_", " ").toLowerCase()}</option>)}</select></label>
+          <label className="block space-y-1"><span className="text-sm font-medium text-slate-700">Room category</span>
+            <select name="roomTypeId" defaultValue={filter.roomTypeId ?? ""} className={input}><option value="">Any category</option>{types.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
+          <label className="block space-y-1"><span className="text-sm font-medium text-slate-700">Booking source</span>
+            <select name="source" defaultValue={filter.source ?? ""} className={input}><option value="">Any source</option>{BOOKING_SOURCES.map((s) => <option key={s} value={s}>{SOURCE_LABELS[s]}</option>)}</select></label>
+          {res.canMoney && (
+            <label className="block space-y-1"><span className="text-sm font-medium text-slate-700">Payment status</span>
+              <select name="payment" defaultValue={filter.payment ?? ""} className={input}><option value="">Any payment status</option>{PAYMENTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>
           )}
-        </div>
+          <label className="block space-y-1"><span className="text-sm font-medium text-slate-700">Assigned room</span>
+            <select name="roomId" defaultValue={filter.roomId ?? ""} className={input}><option value="">Any room</option>{rooms.map((r) => <option key={r.id} value={r.id}>{r.number}</option>)}</select></label>
+          <label className="block space-y-1"><span className="text-sm font-medium text-slate-700">Arrival from</span><input type="date" name="arrivalFrom" defaultValue={filter.arrivalFrom} className={input} /></label>
+          <label className="block space-y-1"><span className="text-sm font-medium text-slate-700">Arrival to</span><input type="date" name="arrivalTo" defaultValue={filter.arrivalTo} className={input} /></label>
+          <label className="block space-y-1"><span className="text-sm font-medium text-slate-700">Departure from</span><input type="date" name="departureFrom" defaultValue={filter.departureFrom} className={input} /></label>
+          <label className="block space-y-1"><span className="text-sm font-medium text-slate-700">Departure to</span><input type="date" name="departureTo" defaultValue={filter.departureTo} className={input} /></label>
+          <label className="block space-y-1"><span className="text-sm font-medium text-slate-700">Sort by</span>
+            <select name="sort" defaultValue={sort} className={input}>{RESERVATION_SORTS.map((s) => <option key={s} value={s}>{SORT_LABELS[s]}</option>)}</select></label>
+          <label className="block space-y-1"><span className="text-sm font-medium text-slate-700">Order</span>
+            <select name="dir" defaultValue={filter.dir} className={input}><option value="asc">Oldest first</option><option value="desc">Newest first</option></select></label>
+          <div className="flex items-end gap-2 sm:col-span-2 lg:col-span-4">
+            <button className={btn}>Apply</button>
+            {active.length > 0 && <Link href="/app/reservations" className={btnGhost}>Clear filters</Link>}
+          </div>
+        </form>
+      </Card>
 
-        <div className="min-w-0 space-y-4 lg:col-span-2">
-          {quote && canBook && (
-            <Card title="3. Guest and booking details">
-              <form action={addBookingAction} className="grid gap-3 md:grid-cols-2">
-                {(["roomTypeId", "roomId", "arrival", "departure", "rooms", "adults", "children", "discountPct", "discountAmt"] as const).map((k) => (
-                  <input key={k} type="hidden" name={k} value={v[k]} />
-                ))}
-                {can("guests.view") && guests.length > 0 && (
-                  <Field label="Existing guest">
-                    <select name="guestId" defaultValue="" className={input}>
-                      <option value="">New guest (fill in below)</option>
-                      {guests.map((g) => <option key={g.id} value={g.id}>{g.name}{g.phone ? ` · ${g.phone}` : ""}</option>)}
-                    </select>
-                  </Field>
-                )}
-                <Field label="Guest name"><input name="g_name" className={input} autoComplete="off" /></Field>
-                <Field label="Mobile number"><input name="g_mobile" type="tel" inputMode="tel" className={input} autoComplete="off" /></Field>
-                <Field label="Booking source">
-                  <select name="source" defaultValue="WALK_IN" className={input}>
-                    {BOOKING_SOURCES.filter((s) => st["reservation.enabledSources"].includes(s)).map((s) => <option key={s} value={s}>{SOURCE_LABELS[s]}</option>)}
-                  </select>
-                </Field>
-                <Field label="Booking status">
-                  <select name="status" defaultValue="CONFIRMED" className={input}>
-                    <option value="CONFIRMED">Confirmed</option>
-                    <option value="TENTATIVE">Tentative (holds the room)</option>
-                  </select>
-                </Field>
-                {discounted && (
-                  <Field label="Reason for discount"><input name="discountReason" required minLength={3} className={input} /></Field>
-                )}
-                {can("payments.record") && (
-                  <>
-                    <Field label="Advance received (₹, optional)"><input name="advanceAmt" inputMode="decimal" className={input} /></Field>
-                    <Field label="Advance method">
-                      <select name="advanceMethod" defaultValue="UPI" className={input}>
-                        {["CASH", "UPI", "CARD", "BANK_TRANSFER", "OTHER"].map((m) => <option key={m} value={m}>{m.replace("_", " ").toLowerCase()}</option>)}
-                      </select>
-                    </Field>
-                    <Field label="Advance reference (optional)"><input name="advanceRef" className={input} /></Field>
-                  </>
-                )}
-                <details className="md:col-span-2">
-                  <summary className="cursor-pointer text-sm text-slate-600">More details (optional)</summary>
-                  <div className="mt-2 grid gap-3 md:grid-cols-2">
-                    <Field label="Email"><input name="g_email" type="email" className={input} /></Field>
-                    <Field label="Company"><input name="companyName" className={input} /></Field>
-                    <Field label="Travel agent"><input name="agentName" className={input} /></Field>
-                    <Field label="Guest address"><input name="g_address" className={input} /></Field>
-                    <Field label="ID type (where legally required)">
-                      <select name="g_idType" defaultValue="" className={input}>
-                        <option value="">Not recorded</option>
-                        {ID_TYPES.map((t) => <option key={t} value={t}>{t.replace("_", " ").toLowerCase()}</option>)}
-                      </select>
-                    </Field>
-                    <Field label="ID number"><input name="g_idNumber" autoComplete="off" className={input} /></Field>
-                    <div className="md:col-span-2"><Field label="Special requests"><textarea name="notes" rows={2} className={input} /></Field></div>
-                  </div>
-                </details>
-                <div className="md:col-span-2">
-                  <button className={btn}>Save booking</button>
-                  <span className="ml-3 text-xs text-slate-500">Rate plan: Standard (room type base rate).</span>
-                </div>
-              </form>
-            </Card>
-          )}
-
-          <Card title={`Reservations (${list.length})`}>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="text-xs text-slate-500">
-                  <tr><th className="py-1">Ref</th><th>Guest</th><th>Room</th><th>Stay</th><th>Source</th><th>Status</th><th /></tr>
+      <div className="mt-4">
+        <Card title={`Reservations (${res.total})`}>
+          {res.items.length === 0 ? (
+            <EmptyState title={active.length ? "No reservations match these filters" : "No reservations yet"}>
+              {active.length ? "Widen the dates or clear the filters." : "Make the first booking from New reservation."}
+            </EmptyState>
+          ) : (
+            <div className="relative overflow-x-auto" tabIndex={0} role="region" aria-label="Reservations table, scrolls sideways">
+              <table className="w-full min-w-[72rem] text-left text-sm">
+                <thead className="text-xs text-slate-600">
+                  <tr>
+                    <th scope="col" className="py-1 pr-2">Reference</th><th scope="col" className="pr-2">Guest</th><th scope="col" className="pr-2">Stay</th>
+                    <th scope="col" className="pr-2">Nts</th><th scope="col" className="pr-2">Guests</th><th scope="col" className="pr-2">Room</th>
+                    <th scope="col" className="pr-2">Source</th><th scope="col" className="pr-2">Status</th>
+                    {res.canMoney && <><th scope="col" className="pr-2 text-right">Total</th><th scope="col" className="pr-2 text-right">Paid</th><th scope="col" className="pr-2 text-right">Balance</th></>}
+                    <th scope="col" className="pr-2">Booked</th><th scope="col"><span className="sr-only">Actions</span></th>
+                  </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {list.map((r) => (
-                    <tr key={r.id}>
-                      <td className="py-2 font-mono text-xs"><Link className="underline" href={`/app/reservations/${r.id}`}>{r.reference}</Link></td>
-                      <td>{r.guest.name}</td>
-                      <td>{r.assignments[0]?.room.number ?? "—"}</td>
-                      <td className="whitespace-nowrap">{fmtDate(r.arrival)} → {fmtDate(r.departure)}</td>
-                      <td>{SOURCE_LABELS[r.source] ?? r.source}</td>
-                      <td><Badge value={r.status} /></td>
-                      <td><ReservationActions id={r.id} status={r.status} ctx={ctx} back="/app/reservations" /></td>
+                  {res.items.map((r) => (
+                    <tr key={r.id} className="align-top">
+                      <td className="py-2 pr-2 font-mono text-xs">
+                        <Link className="underline" href={`/app/reservations/${r.id}`}>{r.reference}</Link>
+                        {r.externalRef && <span className="block text-slate-600">OTA {r.externalRef}</span>}
+                      </td>
+                      <td className="pr-2">
+                        {r.guest.name}{r.vip && <span className="ml-1 rounded-full bg-gold-100 px-1.5 text-xs text-gold-700">VIP</span>}
+                        <span className="block text-xs text-slate-600">{[r.guest.phone, r.guest.email].filter(Boolean).join(" · ") || "No contact"}</span>
+                      </td>
+                      <td className="whitespace-nowrap pr-2">{fmtDate(r.arrival)} → {fmtDate(r.departure)}</td>
+                      <td className="pr-2 tabular-nums">{r.nights}</td>
+                      <td className="whitespace-nowrap pr-2">{r.adults}A{r.children ? ` ${r.children}C` : ""}</td>
+                      <td className="pr-2">{r.room ?? <span className="text-slate-600">Unassigned</span>}<span className="block text-xs text-slate-600">{r.roomType}</span></td>
+                      <td className="pr-2">{SOURCE_LABELS[r.source as keyof typeof SOURCE_LABELS] ?? r.source}</td>
+                      <td className="pr-2"><Badge value={r.status} /></td>
+                      {res.canMoney && r.money && (
+                        <>
+                          <td className="pr-2 text-right tabular-nums">{inr(r.money.totalMinor)}{r.money.estimated && <span className="block text-xs text-slate-600">estimate</span>}</td>
+                          <td className="pr-2 text-right tabular-nums">{inr(r.money.paidMinor)}</td>
+                          <td className="pr-2 text-right tabular-nums"><span className={r.money.balanceMinor > 0 ? "font-medium text-amber-900" : ""}>{inr(r.money.balanceMinor)}</span>
+                            <span className="block text-xs text-slate-600">{r.money.payment === "PAID" ? "paid" : r.money.payment === "PARTIAL" ? "part paid" : "unpaid"}</span></td>
+                        </>
+                      )}
+                      <td className="whitespace-nowrap pr-2 text-xs text-slate-600">{fmtDate(r.createdAt)}<span className="block">{r.createdBy}</span></td>
+                      <td><ReservationActions id={r.id} status={r.status} ctx={ctx} back={href({})} /></td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            {list.length === 0 && <p className="py-3 text-sm text-slate-500">No reservations yet. Check availability above to make the first booking.</p>}
-          </Card>
-          <p className="text-xs text-slate-500"><Link href="/app/reservations/calendar" className={btnGhost}>Open calendar</Link></p>
-        </div>
+          )}
+          {res.total > 0 && (
+            <nav aria-label="Pages" className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm">
+              <span className="text-slate-600">Showing {from}–{to} of {res.total}</span>
+              <span className="flex gap-2">
+                {res.page > 1 ? <Link className={btnGhost} href={href({ page: res.page - 1 })}>Previous</Link> : <span className={`${btnGhost} opacity-50`} aria-disabled="true">Previous</span>}
+                <span className="px-1 py-1.5">Page {res.page} of {res.pages}</span>
+                {res.page < res.pages ? <Link className={btnGhost} href={href({ page: res.page + 1 })}>Next</Link> : <span className={`${btnGhost} opacity-50`} aria-disabled="true">Next</span>}
+              </span>
+            </nav>
+          )}
+        </Card>
       </div>
     </>
   );
